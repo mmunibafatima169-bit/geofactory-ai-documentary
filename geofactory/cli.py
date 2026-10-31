@@ -13,6 +13,7 @@ from typing import Any
 
 from geofactory.agents.research_agent import (
     discover_wikipedia_sources, export_ledger, import_ledger,
+    mark_claim_reviewed,
 )
 from geofactory.agents.script_agent import write_script_preview
 from geofactory.agents.topic_agent import propose_topics
@@ -26,12 +27,14 @@ from geofactory.core.jobs import (
 )
 from geofactory.media.asset_manager import (
     export_asset_ledger, register_asset, search_and_download_commons,
-    write_attribution_report,
+    sha256_file, write_attribution_report,
 )
-from geofactory.media.tts_engine import synthesize, write_estimated_srt
+from geofactory.media.tts_engine import (
+    audio_duration_seconds, synthesize, write_text_only_narration,
+)
 from geofactory.media.video_editor import RenderError, render_video
 from geofactory.publishing.youtube_client import upload_approved_video
-from geofactory.quality.qa_engine import assert_approvable, run_qa
+from geofactory.quality.qa_engine import assert_approvable, run_qa, validate_srt
 from geofactory.scheduler.worker import process_offline_job, recover_and_process
 
 
@@ -96,7 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     asset.add_argument("--attribution", required=True)
     asset.add_argument("--commercial-use", action="store_true", required=True)
 
-    narrate = sub.add_parser("narrate", help="Generate local Piper narration from reviewed text")
+    narrate = sub.add_parser("narrate", help="Generate local narration or labelled text-only script")
     narrate.add_argument("job_id")
     narrate.add_argument("--text-file", type=Path, required=True)
 
@@ -110,6 +113,18 @@ def build_parser() -> argparse.ArgumentParser:
     approve.add_argument("job_id")
     approve.add_argument("--reviewer", default="local owner")
     approve.add_argument("--note", default="")
+
+    claim_review = sub.add_parser(
+        "claims-review",
+        help="Inspect claims or mark one claim as verified against its cited sources",
+    )
+    claim_review.add_argument("job_id")
+    claim_review.add_argument("--claim-id", help="Claim to attest after checking its cited evidence")
+    claim_review.add_argument("--reviewer", help="Name of the person who performed the review")
+    claim_review.add_argument(
+        "--confirm-reviewed", action="store_true",
+        help="Confirm this specific claim was checked against its cited evidence",
+    )
 
     reject = sub.add_parser("reject", help="Reject a job")
     reject.add_argument("job_id")
@@ -164,6 +179,9 @@ def _example_config() -> dict[str, Any]:
         "piper_executable": "piper",
         "piper_voice_model": "",
         "piper_voice_license": "",
+        "espeak_executable": "espeak-ng",
+        "espeak_voice": "en-us",
+        "espeak_speed": 155,
         "local_llm_url": "http://127.0.0.1:11434",
         "local_llm_model": "",
         "minimum_free_disk_gb": 2.0,
@@ -175,10 +193,13 @@ def _example_config() -> dict[str, Any]:
 def _doctor(config: FactoryConfig) -> dict[str, Any]:
     usage = shutil.disk_usage(config.root)
     tools = {}
-    for name in ("ffmpeg", "ffprobe", "ollama", config.piper_executable):
-        executable = config.ffmpeg if name == "ffmpeg" else (
-            config.ffprobe if name == "ffprobe" else name
-        )
+    for name, executable in (
+        ("ffmpeg", config.ffmpeg),
+        ("ffprobe", config.ffprobe),
+        ("ollama", "ollama"),
+        ("piper", config.piper_executable),
+        ("espeak-ng", config.espeak_executable),
+    ):
         tools[name] = shutil.which(executable) or "not found"
     memory: dict[str, str] = {}
     meminfo = Path("/proc/meminfo")
@@ -193,6 +214,12 @@ def _doctor(config: FactoryConfig) -> dict[str, Any]:
         gpu_info = result.stdout.strip() if result.returncode == 0 else "GPU query failed"
     db = Database(config.database_path)
     db.initialize()
+    required_tools = ["ffmpeg", "ffprobe"]
+    if config.tts_backend == "espeak-ng":
+        required_tools.append("espeak-ng")
+    elif config.tts_backend == "piper":
+        required_tools.append("piper")
+    missing_tools = [name for name in required_tools if tools[name] == "not found"]
     return {
         "python": sys.version.split()[0],
         "platform": sys.platform,
@@ -202,12 +229,14 @@ def _doctor(config: FactoryConfig) -> dict[str, Any]:
         "disk_free_gib": round(usage.free / (1024 ** 3), 2),
         "gpu": gpu_info,
         "tools": tools,
+        "tts_backend": config.tts_backend,
         "database": str(config.database_path),
         "dashboard_bind": f"{config.bind_host}:{config.dashboard_port}",
         "publishing_enabled": config.publishing_enabled,
         "assessment": (
-            "Hardware-independent workflow is available. Rendering and narration require "
-            "separately installed, configured tools."
+            f"Missing configured media executables: {', '.join(missing_tools)}."
+            if missing_tools else
+            f"Configured media executables are available; TTS backend is {config.tts_backend}."
         ),
     }
 
@@ -244,6 +273,35 @@ def _approve(db: Database, job_id: str, reviewer: str, note: str) -> None:
         encoding="utf-8",
     )
     print(f"Approved exact package sha256={digest}")
+
+
+def _invalidate_if_package_changed(db: Database, job_id: str, package: Path) -> None:
+    if get_job(db, job_id)["status"] == "approved":
+        approval_is_current(db, job_id, package)
+
+
+def _validate_narration_package(package: Path, config: FactoryConfig) -> None:
+    manifest_path = package / "narration_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Narration manifest is missing or invalid: {exc}") from exc
+    expected_hashes = {
+        "audio_sha256": package / "narration.wav",
+        "narration_text_sha256": package / "narration.txt",
+        "subtitles_sha256": package / "subtitles.srt",
+    }
+    if manifest.get("mode") != "audio":
+        raise ValueError("Rendering requires generated audio; text-only narration cannot be rendered.")
+    for field, path in expected_hashes.items():
+        if not path.is_file() or manifest.get(field) != sha256_file(path):
+            raise ValueError(f"Narration package is stale or incomplete: {path.name}.")
+    subtitle_problems = validate_srt(package / "subtitles.srt")
+    if subtitle_problems:
+        raise ValueError("Invalid subtitles: " + "; ".join(subtitle_problems))
+    duration = audio_duration_seconds(package / "narration.wav", config.ffprobe)
+    if abs(duration - float(manifest.get("duration_seconds", 0))) > 0.25:
+        raise ValueError("Narration duration no longer matches its generation manifest.")
 
 
 def run(args: argparse.Namespace) -> int:
@@ -375,15 +433,50 @@ def run(args: argparse.Namespace) -> int:
         job = get_job(db, args.job_id)
         text = args.text_file.read_text(encoding="utf-8")
         package = Path(job["output_dir"])
-        duration = synthesize(text, package / "narration.wav", config)
-        (package / "narration.txt").write_text(text, encoding="utf-8")
-        write_estimated_srt(text, package / "subtitles.srt")
-        print(f"Generated narration ({duration:.1f}s). Subtitle timings are estimated; review alignment.")
+        if config.tts_backend == "none":
+            write_text_only_narration(text, package / "narration.txt")
+            manifest = {
+                "mode": "text-only",
+                "backend": "none",
+                "narration_text_sha256": sha256_file(package / "narration.txt"),
+                "audio_sha256": "",
+                "subtitles_sha256": "",
+            }
+            print(
+                "Saved clearly labelled text-only narration. No audio or synchronized SRT "
+                "was generated; QA will block rendering."
+            )
+        else:
+            duration = synthesize(
+                text, package / "narration.wav", config,
+                subtitle_destination=package / "subtitles.srt",
+            )
+            (package / "narration.txt").write_text(text.strip() + "\n", encoding="utf-8")
+            manifest = {
+                "mode": "audio",
+                "backend": config.tts_backend,
+                "narration_text_sha256": sha256_file(package / "narration.txt"),
+                "audio_sha256": sha256_file(package / "narration.wav"),
+                "subtitles_sha256": sha256_file(package / "subtitles.srt"),
+                "duration_seconds": duration,
+            }
+            print(
+                f"Generated and verified narration ({duration:.1f}s) with "
+                f"sentence-timed subtitles."
+            )
+        manifest_path = package / "narration_manifest.json"
+        temporary_manifest = manifest_path.with_suffix(".json.tmp")
+        temporary_manifest.write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
+        temporary_manifest.replace(manifest_path)
+        _invalidate_if_package_changed(db, args.job_id, package)
     elif args.command == "render":
         job = get_job(db, args.job_id)
         package = Path(job["output_dir"])
         if job["status"] not in {"awaiting_review", "qa_failed"}:
             raise ValueError(f"Render requires awaiting_review or qa_failed, got {job['status']}.")
+        _validate_narration_package(package, config)
         transition_job(db, args.job_id, "rendering", "Owner requested local FFmpeg render.")
         with db.connect() as conn:
             records = [dict(row) for row in conn.execute(
@@ -391,7 +484,10 @@ def run(args: argparse.Namespace) -> int:
             )]
         images = [Path(record["path"]) for record in records]
         try:
-            render_video(config, images, package / "narration.wav", package / "final.mp4", records)
+            render_video(
+                config, images, package / "narration.wav", package / "final.mp4",
+                records, package / "subtitles.srt",
+            )
         except RenderError as exc:
             transition_job(
                 db, args.job_id, "qa_failed", "FFmpeg render did not complete.", error=str(exc)
@@ -421,6 +517,55 @@ def run(args: argparse.Namespace) -> int:
     elif args.command == "approve":
         run_qa(db, args.job_id, config)
         _approve(db, args.job_id, args.reviewer, args.note)
+    elif args.command == "claims-review":
+        job = get_job(db, args.job_id)
+        with db.connect() as conn:
+            claims = [
+                dict(row) for row in conn.execute(
+                    """SELECT id, text, kind, source_ids_json, reviewed, reviewer, reviewed_at
+                       FROM claims WHERE job_id=? ORDER BY id""",
+                    (args.job_id,),
+                )
+            ]
+            sources_by_id = {
+                row["id"]: dict(row) for row in conn.execute(
+                    """SELECT id, title, url, publisher, accessed_at, licence, evidence
+                       FROM sources WHERE job_id=?""",
+                    (args.job_id,),
+                )
+            }
+            for claim in claims:
+                source_ids = json.loads(claim["source_ids_json"])
+                claim["sources"] = [
+                    sources_by_id[source_id]
+                    for source_id in source_ids
+                    if source_id in sources_by_id
+                ]
+        if not claims:
+            raise ValueError("There are no claims to review.")
+        if args.claim_id is None:
+            print(json.dumps({"claims": claims}, indent=2, ensure_ascii=False))
+            return 0
+        if not args.reviewer or not args.confirm_reviewed:
+            raise ValueError(
+                "Review one claim by providing --reviewer and --confirm-reviewed after inspecting its evidence."
+            )
+        mark_claim_reviewed(db, args.job_id, args.claim_id, args.reviewer)
+        export_ledger(
+            db, args.job_id, Path(job["output_dir"]) / "source_ledger.json"
+        )
+        _invalidate_if_package_changed(db, args.job_id, Path(job["output_dir"]))
+        print(
+            json.dumps(
+                {
+                    "claim_marked_reviewed": args.claim_id,
+                    "reviewer": args.reviewer,
+                    "confirmation": "Owner attests this claim was checked against its cited sources.",
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
     elif args.command == "reject":
         transition_job(db, args.job_id, "rejected", args.note)
         print("Job rejected.")

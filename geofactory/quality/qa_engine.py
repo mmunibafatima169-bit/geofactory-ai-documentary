@@ -14,6 +14,7 @@ from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
 from geofactory.media.asset_manager import ALLOWED_LICENSES, sha256_file
 from geofactory.media.video_editor import probe_video
+from geofactory.media.tts_engine import audio_duration_seconds
 
 
 TIMESTAMP_RE = re.compile(r"^(\d{2}):(\d{2}):(\d{2}),(\d{3})$")
@@ -30,11 +31,16 @@ def validate_srt(path: Path) -> list[str]:
     if not text:
         return ["Subtitles file is empty."]
     problems = []
+    previous_end_ms = -1
+    expected_index = 1
     for block_number, block in enumerate(re.split(r"\n\s*\n", text), 1):
         lines = block.splitlines()
         if len(lines) < 3 or not lines[0].isdigit() or " --> " not in lines[1]:
             problems.append(f"Subtitle block {block_number} has invalid structure.")
             continue
+        if int(lines[0]) != expected_index:
+            problems.append(f"Subtitle block {block_number} has a missing or unordered index.")
+        expected_index += 1
         start, end = lines[1].split(" --> ", 1)
         match_start, match_end = TIMESTAMP_RE.fullmatch(start), TIMESTAMP_RE.fullmatch(end)
         if not match_start or not match_end:
@@ -44,6 +50,9 @@ def validate_srt(path: Path) -> list[str]:
         end_ms = _to_ms(match_end.groups())
         if start_ms < 0 or end_ms < 0 or end_ms <= start_ms or end_ms - start_ms > 10_000:
             problems.append(f"Subtitle block {block_number} has an invalid duration.")
+        if start_ms < previous_end_ms:
+            problems.append(f"Subtitle block {block_number} overlaps the previous cue.")
+        previous_end_ms = end_ms
         if any(len(line) > 46 for line in lines[2:]):
             problems.append(f"Subtitle block {block_number} has a line over 46 characters.")
     return problems
@@ -54,6 +63,50 @@ def _to_ms(parts: tuple[str, ...]) -> int:
     if minutes > 59 or seconds > 59:
         return -1
     return ((hours * 60 + minutes) * 60 + seconds) * 1000 + millis
+
+
+def _srt_end_seconds(path: Path) -> float | None:
+    if not path.is_file():
+        return None
+    blocks = re.split(r"\n\s*\n", path.read_text(encoding="utf-8").strip())
+    if not blocks:
+        return None
+    lines = blocks[-1].splitlines()
+    if len(lines) < 2 or " --> " not in lines[1]:
+        return None
+    match = TIMESTAMP_RE.fullmatch(lines[1].split(" --> ", 1)[1])
+    if not match:
+        return None
+    return _to_ms(match.groups()) / 1000
+
+
+def _decode_and_check_audio(config: FactoryConfig, video_path: Path) -> None:
+    ffmpeg = shutil.which(config.ffmpeg)
+    if not ffmpeg:
+        raise RuntimeError(f"FFmpeg executable not found: {config.ffmpeg}")
+    try:
+        result = subprocess.run(
+            [
+                ffmpeg, "-hide_banner", "-nostats", "-i", str(video_path),
+                "-map", "0:v:0", "-map", "0:a:0", "-af", "volumedetect",
+                "-f", "null", "-",
+            ],
+            capture_output=True, text=True, timeout=1800, check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError("Full video/audio decode exceeded the 30-minute QA timeout.") from exc
+    if result.returncode:
+        raise RuntimeError(f"Full video/audio decode failed: {result.stderr[-1500:]}")
+    peak_match = re.search(
+        r"max_volume:\s*(-inf|-?\d+(?:\.\d+)?) dB", result.stderr
+    )
+    if not peak_match:
+        raise RuntimeError("FFmpeg did not report final audio peak levels.")
+    peak = float("-inf") if peak_match.group(1) == "-inf" else float(peak_match.group(1))
+    if peak <= -55.0:
+        raise RuntimeError(f"Rendered narration is silent or nearly silent ({peak:g} dBFS).")
+    if peak >= -0.1:
+        raise RuntimeError(f"Rendered audio may be clipped (peak {peak:g} dBFS).")
 
 
 def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
@@ -71,10 +124,16 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             streams = probe.get("streams", [])
             video_stream = next((stream for stream in streams if stream.get("codec_type") == "video"), None)
             audio_stream = next((stream for stream in streams if stream.get("codec_type") == "audio"), None)
+            subtitle_stream = next(
+                (stream for stream in streams if stream.get("codec_type") == "subtitle"),
+                None,
+            )
             if video_stream is None:
                 checks.append(_check("critical", "missing_video_stream", "Video has no video stream."))
             if audio_stream is None:
                 checks.append(_check("critical", "missing_audio_stream", "Video has no audio stream."))
+            if subtitle_stream is None:
+                checks.append(_check("critical", "missing_subtitle_stream", "Video has no soft subtitle stream."))
             if video_stream:
                 width, height = int(video_stream.get("width", 0)), int(video_stream.get("height", 0))
                 if width < 1280 or height < 720:
@@ -82,6 +141,23 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             duration = float(probe.get("format", {}).get("duration", 0))
             if duration < 480 or duration > 900:
                 checks.append(_check("critical", "duration_out_of_range", f"Video duration is {duration:.1f}s; target is 480-900s."))
+            if audio_stream:
+                try:
+                    audio_duration = float(audio_stream.get("duration", duration))
+                    if abs(duration - audio_duration) > 0.75:
+                        checks.append(_check(
+                            "critical", "audio_video_desynchronized",
+                            f"Video ({duration:.2f}s) and narration ({audio_duration:.2f}s) differ by more than 0.75s.",
+                        ))
+                except (TypeError, ValueError):
+                    checks.append(_check("critical", "audio_duration_invalid", "FFprobe returned an invalid audio stream duration."))
+            subtitle_end = _srt_end_seconds(package / "subtitles.srt")
+            if subtitle_end is not None and abs(duration - subtitle_end) > 2.0:
+                checks.append(_check(
+                    "critical", "subtitle_audio_desynchronized",
+                    f"Subtitle end ({subtitle_end:.2f}s) differs from video ({duration:.2f}s) by more than 2s.",
+                ))
+            _decode_and_check_audio(config, video_path)
             checks.append(_check("info", "probe_passed", "FFprobe opened the rendered file. Manual frame/audio review remains required."))
         except (RuntimeError, ValueError, OSError, StopIteration) as exc:
             checks.append(_check("critical", "video_probe_failed", str(exc)))
@@ -95,6 +171,35 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
     narration = package / "narration.wav"
     if not narration.is_file() or narration.stat().st_size == 0:
         checks.append(_check("critical", "missing_narration", "Narration audio WAV is missing or empty."))
+    manifest_path = package / "narration_manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest.get("mode") != "audio":
+            checks.append(_check(
+                "critical", "narration_not_audio",
+                "Narration manifest does not confirm generated speech audio.",
+            ))
+        elif (
+            not narration.is_file()
+            or manifest.get("audio_sha256") != sha256_file(narration)
+            or manifest.get("narration_text_sha256")
+            != sha256_file(package / "narration.txt")
+            or manifest.get("subtitles_sha256")
+            != sha256_file(package / "subtitles.srt")
+        ):
+            checks.append(_check(
+                "critical", "narration_manifest_mismatch",
+                "Narration, source text, or subtitles changed after audio generation.",
+            ))
+        else:
+            measured_duration = audio_duration_seconds(narration, config.ffprobe)
+            if abs(measured_duration - float(manifest.get("duration_seconds", 0))) > 0.25:
+                checks.append(_check(
+                    "critical", "narration_duration_mismatch",
+                    "Recorded narration duration differs from FFprobe measurement.",
+                ))
+    except (OSError, json.JSONDecodeError, TypeError, ValueError, RuntimeError) as exc:
+        checks.append(_check("critical", "narration_manifest_invalid", f"Narration manifest is invalid: {exc}"))
 
     with db.connect() as conn:
         sources = conn.execute("SELECT * FROM sources WHERE job_id = ?", (job_id,)).fetchall()
@@ -125,6 +230,9 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
                 record.get("text") != claim["text"]
                 or record.get("kind") != claim["kind"]
                 or record.get("source_ids") != json.loads(claim["source_ids_json"])
+                or bool(record.get("reviewed", False)) != bool(claim["reviewed"])
+                or record.get("reviewer", "") != claim["reviewer"]
+                or record.get("reviewed_at", "") != claim["reviewed_at"]
             ):
                 checks.append(_check("critical", "claim_ledger_mismatch", f"Claim {claim['id']} differs from its persisted record."))
     except (OSError, json.JSONDecodeError, KeyError, TypeError, AttributeError) as exc:
@@ -138,6 +246,11 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             checks.append(_check("critical", "unknown_claim_source", f"Claim {claim['id']} cites an unknown source."))
         elif claim["kind"] == "uncertain" and not claim["uncertainty"]:
             checks.append(_check("medium", "uncertainty_unexplained", f"Claim {claim['id']} needs an uncertainty note."))
+        if not claim["reviewed"] or not claim["reviewer"].strip() or not claim["reviewed_at"].strip():
+            checks.append(_check(
+                "critical", "claim_not_human_reviewed",
+                f"Claim {claim['id']} has not been explicitly marked as human-reviewed.",
+            ))
         script_path = package / "script.md"
         if claim["kind"] == "fact" and script_path.is_file():
             script_text = script_path.read_text(encoding="utf-8")
@@ -145,7 +258,7 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             if not narration or f"[{claim['id']}]" not in narration:
                 checks.append(_check("critical", "claim_not_in_script", f"Factual claim {claim['id']} is not cited in the script."))
     if not claims:
-        checks.append(_check("medium", "no_claim_ledger", "No researched claims exist; factual content cannot be approved."))
+        checks.append(_check("critical", "no_claim_ledger", "No source-linked, human-reviewed claims exist; factual content cannot be approved."))
     if claims and not any(check["code"] in {"unsupported_claim", "unknown_claim_source"} for check in checks):
         checks.append(_check("info", "claims_have_sources", "Every factual claim references a recorded source."))
 

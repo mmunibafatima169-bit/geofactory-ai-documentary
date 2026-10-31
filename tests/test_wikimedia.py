@@ -235,13 +235,18 @@ class WikimediaTests(unittest.TestCase):
                 attribution TEXT NOT NULL, commercial_use INTEGER NOT NULL,
                 file_sha256 TEXT NOT NULL, retrieved_at TEXT NOT NULL
             );
+            CREATE TABLE claims (
+                id TEXT PRIMARY KEY, job_id TEXT NOT NULL, text TEXT NOT NULL,
+                kind TEXT NOT NULL, source_ids_json TEXT NOT NULL DEFAULT '[]',
+                uncertainty TEXT NOT NULL DEFAULT ''
+            );
             PRAGMA user_version = 1;
             """
         )
         conn.close()
         migrated = Database(path)
         migrated.initialize()
-        self.assertEqual(SCHEMA_VERSION, 3)
+        self.assertEqual(SCHEMA_VERSION, 4)
         with migrated.connect() as conn:
             self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
             source_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}

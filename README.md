@@ -7,7 +7,7 @@ This repository now contains a Python command-line and local review workflow for
 ## Requirements and quick start
 
 - Python 3.11 or newer. The current environment was assessed at Python 3.14.
-- No Python dependencies are required. FFmpeg/FFprobe, Ollama, and Piper are optional and used only when installed/configured.
+- No Python dependencies are required. FFmpeg/FFprobe and eSpeak NG are needed for local narration/rendering; Ollama and Piper are optional.
 - The dashboard only binds to `127.0.0.1`, `localhost`, or `::1`.
 
 From the repository root:
@@ -65,7 +65,6 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
    Alternatively, register a local image only after personally checking its rights:
 
    ```bash
-   python3 -m geofactory narrate JOB_ID --text-file path/to/reviewed_narration.txt
    python3 -m geofactory asset-add JOB_ID --file path/to/image.jpg \
      --origin-url "https://source.example/image" --creator "Creator" \
      --licence "CC-BY-4.0" --attribution "Creator, title, CC BY 4.0, source URL" \
@@ -74,7 +73,26 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
 
    `asset-add` only registers an existing image and does not independently verify manual licence assertions. Accepted identifiers include `CC0-1.0`, `CC-BY-2.0/3.0/4.0`, `CC-BY-SA-2.0/3.0/4.0`, and `Public Domain`. Compatibility and legal interpretation still require human review.
 
-4. Install FFmpeg and FFprobe from a trusted package source, then render and review:
+4. Generate narration and review the claim ledger. On Ubuntu/Debian, install the free local tools:
+
+   ```bash
+   sudo apt-get install -y ffmpeg espeak-ng
+   ```
+
+   Set `tts_backend` to `espeak-ng` in ignored `config.json`, then generate speech from reviewed narration text:
+
+   ```bash
+   python3 -m geofactory narrate JOB_ID --text-file path/to/reviewed_narration.txt
+   python3 -m geofactory claims-review JOB_ID
+   python3 -m geofactory claims-review JOB_ID --claim-id CLAIM_ID \
+     --reviewer "Owner" --confirm-reviewed
+   ```
+
+   Narration is split into sentence-sized chunks; every chunk is decoded and checked for near-silence, duration is measured with FFprobe, and SRT cue times follow the measured chunk durations. A hash manifest binds the exact narration text, audio, and SRT. The claim-review command first lists claim IDs; attest each claim only after personally checking its evidence. Re-importing the ledger resets review attestations. With `tts_backend: "none"`, the command saves a visibly labelled text-only script and QA blocks audio/render approval.
+
+   **Voice and licence decision:** Piper was not installed with a voice model. The checked [Piper Lessac model card](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/lessac/medium) lists a 63.3 MB model, but links to [Blizzard 2013 dataset terms](https://www.cstr.ed.ac.uk/projects/blizzard/2013/lessac_blizzard2013/license.html) that restrict use to research/exploration and expressly exclude commercial use. Current available RAM (~5.3 GiB) and free disk (~14.2 GiB) are adequate for a small local voice test; licensing, not this snapshot's hardware, is why Lessac was rejected. Piper runtime without a permitted voice would not produce narration. The [LibriTTS high model card](https://huggingface.co/rhasspy/piper-voices/tree/main/en/en_US/libritts/high) identifies 904 speakers trained on audiobook-derived LibriTTS data; this project avoids synthesizing recognizable individual speaker voices without authorization. The fallback installed and tested here is Debian/Ubuntu `espeak-ng` (`en-us`): fully local, free, and rule-based rather than a clone of a particular person. Its voice is intelligible but synthetic and less natural than neural TTS. The Debian package is GPL-3.0-or-later; no external voice model is downloaded automatically.
+
+5. Render and review with FFmpeg:
 
    ```bash
    python3 -m geofactory render JOB_ID
@@ -82,9 +100,9 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
    python3 -m geofactory serve
    ```
 
-   The renderer currently assembles registered still images and WAV narration. It does not create accurate basemaps or animated geography, and it does not yet align subtitle timings to measured speech (SRT timings are estimated). QA requires an 8–15-minute video, 720p or better, audio, SRT, source-linked factual claims, licensed visuals, and attribution. Manual checks for accuracy, map/border labels, black/frozen frames, levels, policy, and title/thumbnail agreement remain mandatory. Fix failures and rerun QA before approval.
+   The renderer creates a 16:9 H.264 MP4 from registered stills with restrained Ken Burns motion, measured-duration narration, and a soft subtitle track. Set `width`/`height` to `1280`/`720` for a lower-resource HD render or `1920`/`1080` when the machine can sustain it. QA checks resolution and 8–15-minute duration, probes and fully decodes audio/video, checks audio for silence/clipping, validates subtitle syntax and synchronization, and compares the media manifest hashes. QA still requires source-linked claims to be individually human-reviewed, compatible asset rights, and attribution. Accurate basemaps, animated geography, frame-by-frame visual review, policy checks, and title/thumbnail agreement still require human work. Fix failures and rerun QA before approval.
 
-5. Approve only a QA-passing package in the dashboard or CLI:
+6. Approve only a QA-passing package in the dashboard or CLI:
 
    ```bash
    python3 -m geofactory approve JOB_ID --reviewer "Owner"
@@ -96,9 +114,9 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
 
 `config.example.json` is the validated template. `config.json` is local and ignored by Git. Paths resolve from its configured root. Publishing must remain disabled; attempts to enable it are rejected. The dashboard refuses non-loopback binds. The optional Ollama URL is also restricted to loopback, and `local_llm_model` must be explicitly configured. The model endpoint is never called unless the script command is configured for it.
 
-Current machine assessment: Ubuntu 24.04, Python 3.14.2, x86_64, approximately 7.8 GiB RAM (roughly 1.1–1.3 GiB available during this phase), no swap, 15+ GiB free disk, and no detected NVIDIA GPU. FFmpeg 6.1.1 and FFprobe are installed. Ollama 0.40.13 is installed and `qwen2.5:0.5b` (397 MB) is downloaded; the ignored local `config.json` selects that configurable model name. **Model inference has not been run**: free memory is tight, CPU-only, and without swap. Do not expect dependable long-script generation or production throughput on this host. No voice model was installed or licence-reviewed. No model is downloaded automatically on other hosts.
+Current machine assessment is reported by `python3 -m geofactory doctor`; RAM availability varies with the container workload. This host is Ubuntu 24.04, Python 3.14, x86_64, CPU-only, and has no swap or detected NVIDIA GPU. At the latest in-render check it had 7.8 GiB total RAM, 4.8 GiB available, and 14.2 GiB free disk. FFmpeg/FFprobe and eSpeak NG are installed. Ollama 0.40.13 and `qwen2.5:0.5b` (397 MB) are installed, but inference has not been run; the local config intentionally leaves `local_llm_model` empty so script generation stays on the manual/evidence-aware fallback unless you opt in. A 1920x1080 eight-minute render may be slow on CPU; use 1280x720 when resources are constrained. No voice model was downloaded; the licence reason and fallback are documented above. No model is downloaded automatically on other hosts.
 
-Ollama's systemd service is not running in this container. The API server was stopped after the model pull; if you deliberately want to test inference, start `ollama serve` in a separate terminal first. To keep the safe non-LLM script fallback, set `local_llm_model` to an empty string in `config.json`. A tiny model download succeeding does not prove that long-context generation will fit in available RAM.
+Ollama's systemd service is not running in this container. The API server was stopped after the model pull; if you deliberately want to test inference, set `local_llm_model` to `qwen2.5:0.5b` in ignored `config.json` and start `ollama serve` in a separate terminal first. A tiny model download succeeding does not prove that long-context generation will fit in available RAM.
 
 To build a real-source research package scaffold (still blocked until reviewed narration and a video render are supplied):
 

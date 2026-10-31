@@ -30,6 +30,9 @@ class FactoryConfig:
     piper_executable: str = "piper"
     piper_voice_model: Path | None = None
     piper_voice_license: str = ""
+    espeak_executable: str = "espeak-ng"
+    espeak_voice: str = "en-us"
+    espeak_speed: int = 155
     local_llm_url: str = "http://127.0.0.1:11434"
     local_llm_model: str = ""
     minimum_free_disk_gb: float = 2.0
@@ -85,6 +88,9 @@ def load_config(path: Path | str | None = None) -> FactoryConfig:
                 else None
             ),
             piper_voice_license=str(raw.get("piper_voice_license", "")),
+            espeak_executable=str(raw.get("espeak_executable", "espeak-ng")),
+            espeak_voice=str(raw.get("espeak_voice", "en-us")),
+            espeak_speed=int(raw.get("espeak_speed", 155)),
             local_llm_url=str(raw.get("local_llm_url", "http://127.0.0.1:11434")).rstrip("/"),
             local_llm_model=str(raw.get("local_llm_model", "")),
             minimum_free_disk_gb=float(raw.get("minimum_free_disk_gb", 2.0)),
@@ -114,8 +120,8 @@ def validate_config(cfg: FactoryConfig) -> None:
         raise ConfigurationError(
             "The dashboard must bind to loopback; remote access is intentionally unsupported."
         )
-    if cfg.tts_backend not in {"none", "piper"}:
-        raise ConfigurationError("tts_backend must be 'none' or 'piper'.")
+    if cfg.tts_backend not in {"none", "piper", "espeak-ng"}:
+        raise ConfigurationError("tts_backend must be 'none', 'piper', or 'espeak-ng'.")
     if cfg.tts_backend == "piper":
         if not cfg.piper_voice_model or not cfg.piper_voice_model.is_file():
             raise ConfigurationError("Piper needs an existing piper_voice_model path.")
@@ -123,6 +129,8 @@ def validate_config(cfg: FactoryConfig) -> None:
             raise ConfigurationError(
                 "Record the voice model's verified licence in piper_voice_license before use."
             )
+    if not 80 <= cfg.espeak_speed <= 300:
+        raise ConfigurationError("espeak_speed must be between 80 and 300 words per minute.")
     if cfg.minimum_free_disk_gb < 0:
         raise ConfigurationError("minimum_free_disk_gb cannot be negative.")
     llm_url = urlparse(cfg.local_llm_url)

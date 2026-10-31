@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -95,7 +95,10 @@ class Database:
                             text TEXT NOT NULL,
                             kind TEXT NOT NULL,
                             source_ids_json TEXT NOT NULL DEFAULT '[]',
-                            uncertainty TEXT NOT NULL DEFAULT ''
+                            uncertainty TEXT NOT NULL DEFAULT '',
+                            reviewed INTEGER NOT NULL DEFAULT 0,
+                            reviewer TEXT NOT NULL DEFAULT '',
+                            reviewed_at TEXT NOT NULL DEFAULT ''
                         );
                         CREATE TABLE IF NOT EXISTS assets (
                             id TEXT PRIMARY KEY,
@@ -141,7 +144,7 @@ class Database:
                             subscribers_gained INTEGER,
                             notes TEXT NOT NULL DEFAULT ''
                         );
-                        PRAGMA user_version = 3;
+                        PRAGMA user_version = 4;
                         COMMIT;
                         """
                     )
@@ -169,6 +172,16 @@ class Database:
                         )
                         conn.execute(
                             "ALTER TABLE assets ADD COLUMN licence_url TEXT NOT NULL DEFAULT ''"
+                        )
+                    elif version == 3:
+                        conn.execute(
+                            "ALTER TABLE claims ADD COLUMN reviewed INTEGER NOT NULL DEFAULT 0"
+                        )
+                        conn.execute(
+                            "ALTER TABLE claims ADD COLUMN reviewer TEXT NOT NULL DEFAULT ''"
+                        )
+                        conn.execute(
+                            "ALTER TABLE claims ADD COLUMN reviewed_at TEXT NOT NULL DEFAULT ''"
                         )
                     version += 1
                     conn.execute(f"PRAGMA user_version = {version}")

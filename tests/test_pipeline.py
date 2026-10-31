@@ -9,7 +9,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from geofactory.agents.research_agent import ResearchError, import_ledger
+from geofactory.agents.research_agent import (
+    ResearchError, export_ledger, import_ledger, mark_claim_reviewed,
+)
 from geofactory.agents.script_agent import generate_evidence_script
 from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
@@ -77,6 +79,21 @@ class PipelineTests(unittest.TestCase):
         }), encoding="utf-8")
         self.assertEqual(import_ledger(self.db, job["id"], valid), {"sources": 1, "claims": 1})
         self.assertEqual(import_ledger(self.db, job["id"], valid), {"sources": 1, "claims": 1})
+        mark_claim_reviewed(self.db, job["id"], "test-claim", "Test Reviewer")
+        export_ledger(self.db, job["id"], Path(job["output_dir"]) / "source_ledger.json")
+        with self.db.connect() as conn:
+            reviewed = conn.execute(
+                "SELECT reviewed, reviewer FROM claims WHERE id = 'test-claim'"
+            ).fetchone()
+        self.assertEqual((reviewed["reviewed"], reviewed["reviewer"]), (1, "Test Reviewer"))
+        with self.assertRaises(ResearchError):
+            mark_claim_reviewed(self.db, job["id"], "missing-claim", "Test Reviewer")
+        import_ledger(self.db, job["id"], valid)
+        with self.db.connect() as conn:
+            reset = conn.execute(
+                "SELECT reviewed FROM claims WHERE id = 'test-claim'"
+            ).fetchone()
+        self.assertEqual(reset["reviewed"], 0)
 
         other_job = create_job(
             self.db, "Another synthetic topic", "Another question?", self.config.output_dir
@@ -96,6 +113,46 @@ class PipelineTests(unittest.TestCase):
         }), encoding="utf-8")
         with self.assertRaises(ResearchError):
             import_ledger(self.db, job["id"], invalid)
+
+    def test_qa_requires_per_claim_human_review_and_synced_ledger(self) -> None:
+        job = create_job(
+            self.db, "Synthetic claim review test", "Does review unblock claims?",
+            self.config.output_dir,
+        )
+        process_offline_job(self.db, self.config, job["id"])
+        package = Path(job["output_dir"])
+        ledger = self.root / "review-ledger.json"
+        ledger.write_text(json.dumps({
+            "sources": [{
+                "id": "review-source", "title": "Synthetic fixture",
+                "url": "https://example.invalid/review-fixture",
+                "publisher": "Synthetic test fixture",
+                "licence": "Synthetic fixture only; not a legal licence",
+                "evidence": "Synthetic-only test datum.",
+            }],
+            "claims": [{
+                "id": "review-claim", "text": "A synthetic test datum.",
+                "kind": "fact", "source_ids": ["review-source"],
+            }],
+        }), encoding="utf-8")
+        import_ledger(self.db, job["id"], ledger)
+        export_ledger(self.db, job["id"], package / "source_ledger.json")
+        (package / "script.md").write_text(
+            "## Narration\nA synthetic test datum. [review-claim]\n",
+            encoding="utf-8",
+        )
+
+        before = run_qa(self.db, job["id"], self.config)
+        self.assertIn("claim_not_human_reviewed", {
+            check["code"] for check in before["checks"]
+        })
+
+        mark_claim_reviewed(self.db, job["id"], "review-claim", "QA Tester")
+        export_ledger(self.db, job["id"], package / "source_ledger.json")
+        after = run_qa(self.db, job["id"], self.config)
+        codes = {check["code"] for check in after["checks"]}
+        self.assertNotIn("claim_not_human_reviewed", codes)
+        self.assertNotIn("claim_ledger_mismatch", codes)
 
     def test_subtitle_generation_and_validation(self) -> None:
         path = self.root / "captions.srt"

@@ -152,7 +152,8 @@ def import_ledger_data(
                        ON CONFLICT(id) DO UPDATE SET
                          text=excluded.text, kind=excluded.kind,
                          source_ids_json=excluded.source_ids_json,
-                         uncertainty=excluded.uncertainty
+                         uncertainty=excluded.uncertainty, reviewed=0,
+                         reviewer='', reviewed_at=''
                        WHERE claims.job_id=excluded.job_id""",
                     (
                         claim_id_value,
@@ -266,6 +267,23 @@ def export_ledger(db: Database, job_id: str, destination: Path) -> None:
         json.dumps({"sources": sources, "claims": claims}, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
+
+
+def mark_claim_reviewed(
+    db: Database, job_id: str, claim_id: str, reviewer: str
+) -> None:
+    reviewer = reviewer.strip()
+    if not reviewer or len(reviewer) > 160:
+        raise ResearchError("A named human reviewer is required.")
+    timestamp = datetime.now(timezone.utc).isoformat()
+    with db.connect() as conn:
+        cursor = conn.execute(
+            """UPDATE claims SET reviewed=1, reviewer=?, reviewed_at=?
+               WHERE job_id=? AND id=?""",
+            (reviewer, timestamp, job_id, claim_id),
+        )
+    if cursor.rowcount != 1:
+        raise ResearchError(f"No claim {claim_id!r} exists in job {job_id!r}.")
 
 
 def claim_record(
