@@ -32,6 +32,7 @@ from geofactory.media.asset_manager import (
 from geofactory.media.tts_engine import (
     audio_duration_seconds, synthesize, write_text_only_narration,
 )
+from geofactory.media.thumbnail_maker import make_thumbnail
 from geofactory.media.video_editor import RenderError, render_video
 from geofactory.publishing.youtube_client import upload_approved_video
 from geofactory.quality.qa_engine import assert_approvable, run_qa, validate_srt
@@ -386,6 +387,12 @@ def run(args: argparse.Namespace) -> int:
         )
         assets = export_asset_ledger(db, job["id"], package / "asset_ledger.json")
         write_attribution_report(assets, package / "attribution.md")
+        if assets:
+            short_title = " ".join(job["topic"].split())[:48].strip()
+            make_thumbnail(
+                job["topic"], short_title, package / "thumbnail.jpg", config,
+                background=Path(str(assets[0]["path"])),
+            )
         qa_report = run_qa(db, job["id"], config)
         print(
             json.dumps(
@@ -488,9 +495,18 @@ def run(args: argparse.Namespace) -> int:
                 config, images, package / "narration.wav", package / "final.mp4",
                 records, package / "subtitles.srt",
             )
-        except RenderError as exc:
+            if records:
+                make_thumbnail(
+                    job["topic"],
+                    " ".join(job["topic"].split())[:48].strip(),
+                    package / "thumbnail.jpg",
+                    config,
+                    background=images[0],
+                )
+        except (RenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
             transition_job(
-                db, args.job_id, "qa_failed", "FFmpeg render did not complete.", error=str(exc)
+                db, args.job_id, "qa_failed", "Render or thumbnail generation did not complete.",
+                error=str(exc)
             )
             raise
         report = run_qa(db, args.job_id, config)

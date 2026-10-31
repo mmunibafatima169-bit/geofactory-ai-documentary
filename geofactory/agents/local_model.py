@@ -13,7 +13,12 @@ class LocalModelError(RuntimeError):
     """Raised when the configured local model is unavailable or malformed."""
 
 
-def generate_json(config: FactoryConfig, prompt: str, timeout: int = 600) -> dict[str, object]:
+def generate_json(
+    config: FactoryConfig,
+    prompt: str,
+    timeout: int = 600,
+    schema: dict[str, object] | None = None,
+) -> dict[str, object]:
     if not config.local_llm_model.strip():
         raise LocalModelError("Set local_llm_model in config.json to use local model generation.")
     body = json.dumps(
@@ -21,7 +26,8 @@ def generate_json(config: FactoryConfig, prompt: str, timeout: int = 600) -> dic
             "model": config.local_llm_model,
             "prompt": prompt,
             "stream": False,
-            "format": "json",
+            "format": schema or "json",
+            "options": {"temperature": 0.2, "num_predict": 4096},
         }
     ).encode("utf-8")
     request = Request(

@@ -12,6 +12,7 @@ from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
 from geofactory.core.jobs import create_job
 from geofactory.media.asset_manager import register_asset
+from geofactory.media.thumbnail_maker import make_thumbnail
 from geofactory.media.tts_engine import (
     TTSError, _validate_audio_chunk, audio_duration_seconds, split_sentences,
     synthesize,
@@ -64,6 +65,38 @@ class MediaIntegrationTests(unittest.TestCase):
         self.assertGreater(len(chunks), 1)
         self.assertTrue(all(len(chunk) <= 180 for chunk in chunks))
         self.assertIn("First sentence.", chunks[0])
+
+    @unittest.skipUnless(MEDIA_TOOLS, "FFmpeg/FFprobe are required")
+    def test_thumbnail_is_1280x720_jpeg_over_the_supplied_image(self) -> None:
+        background = self.root / "thumbnail-background.png"
+        _write_test_png(background)
+        destination = self.root / "thumbnail.jpg"
+        result = make_thumbnail(
+            "Iceland volcanic landscape",
+            "ICELAND: FIRE & ICE",
+            destination,
+            self.config,
+            background=background,
+        )
+        self.assertEqual(result, destination)
+        self.assertGreater(destination.stat().st_size, 0)
+        import subprocess
+
+        probe = subprocess.run(
+            [
+                shutil.which("ffprobe") or "ffprobe", "-v", "error",
+                "-show_entries", "stream=codec_name,width,height", "-of", "json",
+                str(destination),
+            ],
+            capture_output=True, text=True, timeout=30, check=True,
+        )
+        import json
+
+        stream = json.loads(probe.stdout)["streams"][0]
+        self.assertEqual(
+            (stream["codec_name"], stream["width"], stream["height"]),
+            ("mjpeg", 1280, 720),
+        )
 
     @unittest.skipUnless(MEDIA_TOOLS, "eSpeak NG and FFmpeg/FFprobe are required")
     def test_espeak_generates_measured_audio_and_synchronized_srt(self) -> None:

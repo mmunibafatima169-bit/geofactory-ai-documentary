@@ -68,7 +68,7 @@ def process_offline_job(db: Database, config: FactoryConfig, job_id: str) -> dic
     }
     _write_text(package / "metadata.json", json.dumps(metadata, indent=2) + "\n")
     short_text = "RESEARCH FIRST"
-    make_thumbnail(job["topic"], short_text, package / "thumbnail.png", config)
+    make_thumbnail(job["topic"], short_text, package / "thumbnail.jpg", config)
     _write_text(
         package / "attribution.md",
         "# Visual attribution\n\nNo external assets are included in this demo package.\n",

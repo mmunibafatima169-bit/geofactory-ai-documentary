@@ -19,7 +19,7 @@ from geofactory.quality.qa_engine import assert_approvable, run_qa
 
 SAFE_ARTIFACTS = {
     "final.mp4", "script.md", "narration.txt", "narration.wav", "subtitles.srt",
-    "thumbnail.svg", "thumbnail.png", "metadata.json", "source_ledger.json",
+    "thumbnail.svg", "thumbnail.png", "thumbnail.jpg", "metadata.json", "source_ledger.json",
     "asset_ledger.json", "attribution.md", "qa_report.md", "qa_report.json",
 }
 
@@ -170,8 +170,11 @@ def create_handler(db: Database, config: FactoryConfig, token: str) -> type[Base
                 if "final.mp4" in files else "<p>No final video yet.</p>"
             )
             thumbnail = (
-                f'<img width="640" alt="Draft thumbnail" src="/artifact/{html.escape(job_id)}/thumbnail.svg">'
-                if "thumbnail.svg" in files else ""
+                f'<img width="640" alt="Draft thumbnail" src="/artifact/{html.escape(job_id)}/thumbnail.jpg">'
+                if "thumbnail.jpg" in files else (
+                    f'<img width="640" alt="Draft thumbnail" src="/artifact/{html.escape(job_id)}/thumbnail.svg">'
+                    if "thumbnail.svg" in files else ""
+                )
             )
             actions = ""
             if job["status"] == "awaiting_approval":

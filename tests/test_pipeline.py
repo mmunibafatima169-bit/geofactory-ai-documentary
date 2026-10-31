@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import argparse
+import base64
 import json
 import subprocess
 import sys
@@ -9,13 +11,15 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
+from geofactory import cli
 from geofactory.agents.research_agent import (
     ResearchError, export_ledger, import_ledger, mark_claim_reviewed,
 )
 from geofactory.agents.script_agent import generate_evidence_script
 from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
-from geofactory.core.jobs import create_job, get_job
+from geofactory.core.jobs import create_job, get_job, transition_job
+from geofactory.media.asset_manager import register_asset
 from geofactory.media.tts_engine import write_estimated_srt
 from geofactory.quality.qa_engine import run_qa, validate_srt
 from geofactory.scheduler.worker import process_offline_job, recover_and_process
@@ -58,6 +62,38 @@ class PipelineTests(unittest.TestCase):
         )
         self.assertEqual(recover_and_process(self.db, self.config, max_jobs=1), [job["id"]])
         self.assertEqual(get_job(self.db, job["id"])["status"], "qa_failed")
+
+    def test_thumbnail_failure_after_render_returns_job_to_qa_failed(self) -> None:
+        job = create_job(
+            self.db, "Synthetic thumbnail failure", "Does a failed thumbnail recover?",
+            self.config.output_dir,
+        )
+        for state in ("researching", "scripting", "awaiting_review", "rendering", "qa_failed"):
+            transition_job(self.db, job["id"], state)
+        image = self.root / "asset.png"
+        image.write_bytes(base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8A"
+            "AwMCAO+/pWQAAAAASUVORK5CYII="
+        ))
+        register_asset(
+            self.db, job["id"], image, "https://example.invalid/synthetic.png",
+            "Synthetic fixture", "CC0-1.0", "Synthetic fixture, CC0-1.0", True,
+        )
+        args = argparse.Namespace(config=None, command="render", job_id=job["id"])
+        with (
+            patch("geofactory.cli.load_config", return_value=self.config),
+            patch("geofactory.cli._validate_narration_package"),
+            patch(
+                "geofactory.cli.render_video",
+                return_value=Path(job["output_dir"]) / "final.mp4",
+            ),
+            patch("geofactory.cli.make_thumbnail", side_effect=RuntimeError("thumbnail failed")),
+            self.assertRaisesRegex(RuntimeError, "thumbnail failed"),
+        ):
+            cli.run(args)
+        recovered = get_job(self.db, job["id"])
+        self.assertEqual(recovered["status"], "qa_failed")
+        self.assertEqual(recovered["error"], "thumbnail failed")
 
     def test_research_ledger_requires_traceable_fact_sources(self) -> None:
         job = create_job(

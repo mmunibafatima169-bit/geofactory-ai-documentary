@@ -305,9 +305,42 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             if asset["attribution"] not in attribution_text:
                 checks.append(_check("critical", "asset_attribution_missing", f"Attribution for asset {asset['id']} is missing."))
 
-    for required in ("script.md", "metadata.json", "thumbnail.svg", "source_ledger.json", "asset_ledger.json"):
+    for required in (
+        "script.md", "metadata.json", "thumbnail.svg", "thumbnail.jpg",
+        "source_ledger.json", "asset_ledger.json",
+    ):
         if not (package / required).is_file():
             checks.append(_check("critical", "missing_package_file", f"Required package file is missing: {required}."))
+    thumbnail_path = package / "thumbnail.jpg"
+    if thumbnail_path.is_file():
+        try:
+            ffprobe = shutil.which(config.ffprobe)
+            if not ffprobe:
+                raise RuntimeError(f"FFprobe executable not found: {config.ffprobe}")
+            result = subprocess.run(
+                [
+                    ffprobe, "-v", "error", "-select_streams", "v:0",
+                    "-show_entries", "stream=codec_name,width,height", "-of", "json",
+                    str(thumbnail_path),
+                ],
+                capture_output=True, text=True, timeout=30, check=False,
+            )
+            if result.returncode:
+                raise RuntimeError(f"FFprobe failed: {result.stderr[-1000:]}")
+            thumbnail_stream = json.loads(result.stdout)["streams"][0]
+            if (
+                thumbnail_stream.get("codec_name") != "mjpeg"
+                or thumbnail_stream.get("width") != 1280
+                or thumbnail_stream.get("height") != 720
+            ):
+                checks.append(_check(
+                    "critical", "thumbnail_invalid",
+                    "Thumbnail must be a readable 1280x720 JPEG.",
+                ))
+            else:
+                checks.append(_check("info", "thumbnail_valid", "1280x720 JPEG thumbnail is readable."))
+        except (OSError, RuntimeError, json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
+            checks.append(_check("critical", "thumbnail_invalid", f"Thumbnail validation failed: {exc}"))
     if (package / "metadata.json").is_file():
         try:
             metadata = json.loads((package / "metadata.json").read_text(encoding="utf-8"))
