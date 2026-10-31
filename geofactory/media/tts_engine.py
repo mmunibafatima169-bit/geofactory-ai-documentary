@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 import shutil
@@ -133,6 +134,9 @@ def _validate_audio_chunk(path: Path, config: FactoryConfig) -> float:
 def _synthesize_chunk(
     text: str, destination: Path, config: FactoryConfig
 ) -> None:
+    if config.tts_backend == "edge-tts":
+        _synthesize_edge_chunk(text, destination, config)
+        return
     if config.tts_backend == "espeak-ng":
         executable = shutil.which(config.espeak_executable)
         if not executable:
@@ -168,6 +172,50 @@ def _synthesize_chunk(
         )
     if not destination.is_file() or destination.stat().st_size == 0:
         raise TTSError("TTS backend reported success but produced no audio chunk.")
+
+
+def _synthesize_edge_chunk(
+    text: str, destination: Path, config: FactoryConfig
+) -> None:
+    try:
+        import edge_tts
+    except ImportError as exc:
+        raise TTSError(
+            "Install the optional Edge TTS dependency with `pip install -r requirements.txt`."
+        ) from exc
+
+    async def save_audio(path: Path) -> None:
+        communicate = edge_tts.Communicate(text, config.edge_tts_voice)
+        await communicate.save(str(path))
+
+    mp3_path = destination.with_suffix(".mp3")
+    try:
+        try:
+            asyncio.run(save_audio(mp3_path))
+        except Exception as exc:
+            raise TTSError(
+                f"Edge TTS could not synthesize a chunk using "
+                f"{config.edge_tts_voice}: {type(exc).__name__}."
+            ) from exc
+        ffmpeg = shutil.which(config.ffmpeg)
+        if not ffmpeg:
+            raise TTSError(f"FFmpeg executable not found: {config.ffmpeg}")
+        converted = subprocess.run(
+            [
+                ffmpeg, "-y", "-v", "error", "-i", str(mp3_path),
+                "-ar", "22050", "-ac", "1", "-c:a", "pcm_s16le", str(destination),
+            ],
+            capture_output=True, text=True, timeout=120, check=False,
+        )
+        if converted.returncode:
+            raise TTSError(
+                f"Edge TTS audio conversion failed ({converted.returncode}): "
+                f"{converted.stderr[-1000:]}"
+            )
+        if not destination.is_file() or destination.stat().st_size == 0:
+            raise TTSError("Edge TTS returned without producing a playable audio chunk.")
+    finally:
+        mp3_path.unlink(missing_ok=True)
 
 
 def synthesize(

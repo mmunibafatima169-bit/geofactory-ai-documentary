@@ -8,12 +8,19 @@ from html.parser import HTMLParser
 import json
 import logging
 import re
+import shutil
+import subprocess
 import tempfile
+import threading
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlencode, urlparse
+from urllib.request import Request, urlopen
 
+from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
 from geofactory.wikimedia import WikimediaError, request_bytes, request_json
 
@@ -23,7 +30,15 @@ ALLOWED_LICENSES = {
     "CC-BY-SA-2.0", "CC-BY-SA-3.0", "CC-BY-SA-4.0",
     "Public Domain",
 }
+PLATFORM_LICENSES = {
+    "Pexels License": "https://www.pexels.com/license/",
+    "Pixabay Content License": "https://pixabay.com/service/license-summary/",
+}
+ALLOWED_MEDIA_LICENSES = ALLOWED_LICENSES | set(PLATFORM_LICENSES)
 logger = logging.getLogger(__name__)
+_provider_request_lock = threading.Lock()
+_provider_last_request = 0.0
+MAX_STOCK_VIDEO_BYTES = 250 * 1024 * 1024
 
 
 class _TextExtractor(HTMLParser):
@@ -178,6 +193,362 @@ def register_asset(
             ),
         )
     return asset_id
+
+
+def register_music_asset(
+    db: Database,
+    job_id: str,
+    file_path: Path,
+    origin_url: str,
+    creator: str,
+    licence: str,
+    attribution: str,
+    commercial_use: bool,
+    *,
+    title: str = "",
+    publisher: str = "Owner-provided music",
+    licence_url: str = "",
+) -> str:
+    """Register one owner-downloaded music file after its reuse terms are checked."""
+    if file_path.is_symlink():
+        raise AssetRightsError("Music asset must not be a symbolic link.")
+    path = file_path.resolve(strict=True)
+    if (
+        not path.is_file()
+        or path.suffix.lower() not in {".mp3", ".m4a", ".aac", ".wav", ".ogg", ".flac"}
+        or path.stat().st_size == 0
+    ):
+        raise AssetRightsError("Music must be a non-empty supported audio file.")
+    if licence not in ALLOWED_MEDIA_LICENSES:
+        raise AssetRightsError(
+            f"Music licence {licence!r} is not approved; unknown rights are rejected."
+        )
+    if not commercial_use:
+        raise AssetRightsError("Music is not cleared for commercial use.")
+    parsed = urlparse(origin_url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        raise AssetRightsError("Music origin must be a valid HTTPS URL.")
+    if not creator.strip() or not attribution.strip():
+        raise AssetRightsError("Music creator and attribution text are required.")
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise AssetRightsError("FFprobe is required to validate a music file.")
+    probe = subprocess.run(
+        [
+            ffprobe, "-v", "error", "-select_streams", "a:0", "-show_entries",
+            "stream=codec_type", "-of", "json", str(path),
+        ],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if probe.returncode:
+        raise AssetRightsError("FFprobe could not validate the supplied music file.")
+    try:
+        streams = json.loads(probe.stdout).get("streams", [])
+    except (json.JSONDecodeError, AttributeError) as exc:
+        raise AssetRightsError("FFprobe returned invalid music metadata.") from exc
+    if not streams or streams[0].get("codec_type") != "audio":
+        raise AssetRightsError("Supplied music file has no readable audio stream.")
+    asset_id = f"ast-{uuid.uuid4().hex[:12]}"
+    with db.connect() as conn:
+        conn.execute(
+            """INSERT INTO assets
+               (id, job_id, title, publisher, path, origin_url, creator, licence,
+                licence_url, attribution, commercial_use, file_sha256, retrieved_at,
+                media_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'audio')""",
+            (
+                asset_id, job_id, title.strip() or path.stem,
+                publisher.strip() or "Owner-provided music", str(path),
+                origin_url, creator, licence,
+                licence_url or PLATFORM_LICENSES.get(licence, ""),
+                attribution, sha256_file(path), datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+    return asset_id
+
+
+def _provider_json(
+    url: str, *, provider: str, allowed_host: str, headers: dict[str, str] | None = None
+) -> dict[str, object]:
+    global _provider_last_request
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname != allowed_host:
+        raise AssetRightsError(f"{provider} API URL is not on its approved HTTPS host.")
+    with _provider_request_lock:
+        wait = 1.0 - (time.monotonic() - _provider_last_request)
+        if wait > 0:
+            time.sleep(wait)
+        _provider_last_request = time.monotonic()
+    request = Request(
+        url,
+        headers={"User-Agent": "GeoFactory/1.0 (documentary asset research)", **(headers or {})},
+    )
+    try:
+        with urlopen(request, timeout=30) as response:
+            final_url = urlparse(response.geturl())
+            if final_url.scheme != "https" or final_url.hostname != allowed_host:
+                raise AssetRightsError(f"{provider} API redirected outside its approved host.")
+            body = response.read(5 * 1024 * 1024 + 1)
+            if len(body) > 5 * 1024 * 1024:
+                raise AssetRightsError(f"{provider} API response exceeded 5 MiB.")
+    except HTTPError as exc:
+        raise AssetRightsError(
+            f"{provider} API returned HTTP {exc.code}; check the key, quota, and API access."
+        ) from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise AssetRightsError(f"{provider} API request failed ({type(exc).__name__}).") from exc
+    try:
+        data = json.loads(body.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise AssetRightsError(f"{provider} API returned invalid JSON.") from exc
+    if not isinstance(data, dict):
+        raise AssetRightsError(f"{provider} API returned an unexpected response.")
+    return data
+
+
+def _download_stock_video(
+    url: str, destination_dir: Path, *, allowed_hosts: set[str], provider: str
+) -> tuple[Path, str]:
+    parsed = urlparse(url)
+    if parsed.scheme != "https" or parsed.hostname not in allowed_hosts:
+        raise AssetRightsError(f"{provider} video URL is not on an approved HTTPS media host.")
+    request = Request(url, headers={"User-Agent": "GeoFactory/1.0"})
+    try:
+        with urlopen(request, timeout=180) as response:
+            final = urlparse(response.geturl())
+            if final.scheme != "https" or final.hostname not in allowed_hosts:
+                raise AssetRightsError(
+                    f"{provider} media download redirected outside its approved host."
+                )
+            content_type = response.headers.get_content_type().lower()
+            if content_type != "video/mp4":
+                raise AssetRightsError(
+                    f"{provider} returned {content_type or 'unknown content'}, not MP4 video."
+                )
+            declared_size = response.headers.get("Content-Length")
+            if declared_size:
+                try:
+                    if int(declared_size) > MAX_STOCK_VIDEO_BYTES:
+                        raise AssetRightsError(f"{provider} video exceeds the 250 MiB limit.")
+                except ValueError:
+                    raise AssetRightsError(f"{provider} returned an invalid content length.")
+            body = bytearray()
+            while block := response.read(1024 * 1024):
+                body.extend(block)
+                if len(body) > MAX_STOCK_VIDEO_BYTES:
+                    raise AssetRightsError(f"{provider} video exceeds the 250 MiB limit.")
+    except HTTPError as exc:
+        raise AssetRightsError(f"{provider} video download returned HTTP {exc.code}.") from exc
+    except (URLError, TimeoutError, OSError) as exc:
+        raise AssetRightsError(
+            f"{provider} video download failed ({type(exc).__name__})."
+        ) from exc
+    if len(body) < 12 or body[4:8] != b"ftyp":
+        raise AssetRightsError(f"{provider} response is not a valid MP4 file.")
+    digest = hashlib.sha256(body).hexdigest()
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    path = destination_dir / f"{digest}.mp4"
+    if path.exists():
+        if sha256_file(path) != digest:
+            raise AssetRightsError("Refusing to overwrite an unrelated file at the hashed path.")
+        return path, digest
+    with tempfile.NamedTemporaryFile(
+        mode="wb", prefix=".geofactory-", suffix=".tmp",
+        dir=destination_dir, delete=False,
+    ) as stream:
+        temporary = Path(stream.name)
+        stream.write(body)
+        stream.flush()
+    try:
+        temporary.replace(path)
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        raise
+    return path, digest
+
+
+def _register_provider_video(
+    db: Database,
+    job_id: str,
+    provider: str,
+    title: str,
+    creator: str,
+    origin_url: str,
+    licence: str,
+    licence_url: str,
+    path: Path,
+    digest: str,
+) -> dict[str, object]:
+    asset_id = f"ast-{uuid.uuid4().hex[:12]}"
+    attribution = (
+        f'{creator}, "{title}", {provider}, {licence} ({licence_url}), {origin_url}'
+    )
+    with db.connect() as conn:
+        existing = conn.execute(
+            "SELECT * FROM assets WHERE job_id = ? AND file_sha256 = ? AND publisher = ?",
+            (job_id, digest, provider),
+        ).fetchone()
+        if existing:
+            return dict(existing)
+        conn.execute(
+            """INSERT INTO assets
+               (id, job_id, title, publisher, path, origin_url, creator, licence,
+                licence_url, attribution, commercial_use, file_sha256, retrieved_at,
+                media_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'video')""",
+            (
+                asset_id, job_id, title, provider, str(path), origin_url, creator,
+                licence, licence_url, attribution, digest,
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+        return dict(conn.execute(
+            "SELECT * FROM assets WHERE id = ?", (asset_id,)
+        ).fetchone())
+
+
+def _validate_mp4(path: Path, ffprobe_name: str) -> None:
+    ffprobe = shutil.which(ffprobe_name)
+    if not ffprobe:
+        raise AssetRightsError(f"FFprobe executable not found: {ffprobe_name}")
+    result = subprocess.run(
+        [
+            ffprobe, "-v", "error", "-show_entries",
+            "format=duration:stream=codec_type,width,height",
+            "-of", "json", str(path),
+        ],
+        capture_output=True, text=True, timeout=60, check=False,
+    )
+    if result.returncode:
+        raise AssetRightsError("Downloaded stock clip failed FFprobe validation.")
+    try:
+        parsed = json.loads(result.stdout)
+        streams = parsed.get("streams", [])
+        duration = float(parsed.get("format", {}).get("duration", 0))
+    except (json.JSONDecodeError, TypeError, ValueError, AttributeError) as exc:
+        raise AssetRightsError("FFprobe returned invalid stock-video metadata.") from exc
+    if (
+        duration <= 0
+        or not any(
+            stream.get("codec_type") == "video"
+            and int(stream.get("width", 0)) > 0
+            and int(stream.get("height", 0)) > 0
+            for stream in streams if isinstance(stream, dict)
+        )
+    ):
+        raise AssetRightsError("Downloaded stock clip has no valid video stream.")
+
+
+def search_and_download_stock_videos(
+    db: Database,
+    job_id: str,
+    query: str,
+    destination_dir: Path,
+    config: FactoryConfig,
+    *,
+    provider: str,
+    limit: int = 5,
+    max_downloads: int = 2,
+) -> dict[str, object]:
+    """Search and fetch MP4 stock clips through official Pexels/Pixabay video APIs."""
+    query = query.strip()
+    if not query or len(query) > 200:
+        raise AssetRightsError("Stock-video query must contain 1-200 characters.")
+    if not 1 <= limit <= 10 or not 1 <= max_downloads <= 5:
+        raise AssetRightsError("Stock-video limits must be 1-10 results and 1-5 downloads.")
+    if provider not in {"pexels", "pixabay"}:
+        raise AssetRightsError("Provider must be 'pexels' or 'pixabay'.")
+    key = getattr(config, f"{provider}_api_key")
+    if not key:
+        raise AssetRightsError(
+            f"{provider.title()} API key is not configured in ignored config.json."
+        )
+    if provider == "pexels":
+        api_url = "https://api.pexels.com/videos/search?" + urlencode({
+            "query": query, "per_page": limit, "orientation": "landscape",
+        })
+        data = _provider_json(
+            api_url, provider="Pexels", allowed_host="api.pexels.com",
+            headers={"Authorization": key},
+        )
+        candidates = data.get("videos", [])
+        license_name = "Pexels License"
+        license_url = PLATFORM_LICENSES[license_name]
+        hosts = {"videos.pexels.com"}
+    else:
+        api_url = "https://pixabay.com/api/videos/?" + urlencode({
+            "key": key, "q": query, "per_page": limit, "safesearch": "true",
+        })
+        data = _provider_json(
+            api_url, provider="Pixabay", allowed_host="pixabay.com"
+        )
+        candidates = data.get("hits", [])
+        license_name = "Pixabay Content License"
+        license_url = PLATFORM_LICENSES[license_name]
+        hosts = {"cdn.pixabay.com"}
+    if not isinstance(candidates, list):
+        raise AssetRightsError(f"{provider.title()} API omitted its video result list.")
+    registered: list[dict[str, object]] = []
+    rejected: list[dict[str, str]] = []
+    for candidate in candidates:
+        if not isinstance(candidate, dict):
+            continue
+        if provider == "pexels":
+            files = candidate.get("video_files", [])
+            if not isinstance(files, list):
+                rejected.append({"title": "Untitled video", "reason": "Missing video files."})
+                continue
+            choices = [
+                item for item in files
+                if isinstance(item, dict)
+                and item.get("file_type") == "video/mp4"
+                and isinstance(item.get("link"), str)
+                and isinstance(item.get("width"), int)
+                and 0 < item["width"] <= 1920
+            ]
+            selected = max(choices, key=lambda item: int(item.get("width", 0)), default=None)
+            origin_url = candidate.get("url")
+            creator_data = candidate.get("user", {})
+            creator = str(creator_data.get("name", "") if isinstance(creator_data, dict) else "")
+            title = str(candidate.get("id", "Pexels stock video"))
+            download_url = selected.get("link") if selected else None
+        else:
+            video_set = candidate.get("videos", {})
+            selected = video_set.get("large") if isinstance(video_set, dict) else None
+            if not isinstance(selected, dict) or not selected.get("url"):
+                selected = video_set.get("medium") if isinstance(video_set, dict) else None
+            origin_url = candidate.get("pageURL")
+            creator = str(candidate.get("user", ""))
+            title = str(candidate.get("tags", "Pixabay stock video"))
+            download_url = selected.get("url") if isinstance(selected, dict) else None
+        if (
+            not isinstance(origin_url, str)
+            or urlparse(origin_url).scheme != "https"
+            or (
+                urlparse(origin_url).hostname not in {"pexels.com", "www.pexels.com"}
+                if provider == "pexels"
+                else urlparse(origin_url).hostname not in {"pixabay.com", "www.pixabay.com"}
+            )
+            or not isinstance(download_url, str)
+            or not creator.strip()
+        ):
+            rejected.append({"title": title, "reason": "Missing creator, source page, or MP4 URL."})
+            continue
+        try:
+            path, digest = _download_stock_video(
+                download_url, destination_dir, allowed_hosts=hosts,
+                provider=provider.title(),
+            )
+            _validate_mp4(path, config.ffprobe)
+            registered.append(_register_provider_video(
+                db, job_id, provider.title(), title, creator, origin_url,
+                license_name, license_url, path, digest,
+            ))
+        except (AssetRightsError, OSError) as exc:
+            rejected.append({"title": title, "reason": str(exc)})
+        if len(registered) >= max_downloads:
+            break
+    return {"assets": registered, "rejected": rejected}
 
 
 def search_and_download_commons(
@@ -368,12 +739,12 @@ def export_asset_ledger(db: Database, job_id: str, destination: Path) -> list[di
 
 
 def write_attribution_report(records: list[dict[str, object]], destination: Path) -> None:
-    lines = ["# Visual attribution", ""]
+    lines = ["# Media attribution", ""]
     if not records:
         lines.append("No external assets are included.")
     for record in records:
         lines.append(
-            f"- {record['attribution']} — "
+            f"- **{record.get('media_type', 'image').title()}**: {record['attribution']} — "
             f"[licence]({record.get('licence_url') or record['licence']}) — "
             f"[origin]({record['origin_url']})"
         )

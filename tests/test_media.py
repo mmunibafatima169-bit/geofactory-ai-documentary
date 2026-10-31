@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import shutil
+import subprocess
 import struct
 import tempfile
 import unittest
@@ -11,13 +13,13 @@ from pathlib import Path
 from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
 from geofactory.core.jobs import create_job
-from geofactory.media.asset_manager import register_asset
+from geofactory.media.asset_manager import register_asset, register_music_asset
 from geofactory.media.thumbnail_maker import make_thumbnail
 from geofactory.media.tts_engine import (
     TTSError, _validate_audio_chunk, audio_duration_seconds, split_sentences,
     synthesize,
 )
-from geofactory.media.video_editor import probe_video, render_video
+from geofactory.media.video_editor import RenderError, probe_video, render_video
 from geofactory.quality.qa_engine import validate_srt
 
 
@@ -166,6 +168,91 @@ class MediaIntegrationTests(unittest.TestCase):
         video = next(stream for stream in streams if stream["codec_type"] == "video")
         self.assertEqual((video["width"], video["height"]), (320, 180))
         self.assertEqual(validate_srt(subtitles), [])
+
+    @unittest.skipUnless(MEDIA_TOOLS, "FFmpeg/FFprobe and eSpeak NG are required")
+    def test_video_clips_take_priority_and_background_music_is_mixed(self) -> None:
+        config = replace(self.config, tts_backend="espeak-ng")
+        job = create_job(
+            self.database, "Synthetic stock render", "Can clips and music be mixed?",
+            self.config.output_dir,
+        )
+        package = Path(job["output_dir"])
+        package.mkdir(parents=True, exist_ok=True)
+        video = self.root / "stock.mp4"
+        made_video = subprocess.run(
+            [
+                shutil.which("ffmpeg") or "ffmpeg", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "color=c=red:s=320x180:r=30",
+                "-t", "1.5", "-an", "-c:v", "libx264", "-pix_fmt", "yuv420p",
+                str(video),
+            ],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        self.assertEqual(made_video.returncode, 0, made_video.stderr)
+        thumbnail = self.root / "video-thumbnail.jpg"
+        make_thumbnail(
+            "Synthetic stock render", "THE CITY MOVES",
+            thumbnail, config, background=video,
+        )
+        self.assertTrue(thumbnail.is_file())
+        with self.database.connect() as conn:
+            conn.execute(
+                """INSERT INTO assets
+                   (id, job_id, title, publisher, path, origin_url, creator, licence,
+                    licence_url, attribution, commercial_use, file_sha256, retrieved_at,
+                    media_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'video')""",
+                (
+                    "stock-video", job["id"], "Synthetic stock clip", "Pexels",
+                    str(video), "https://www.pexels.com/video/synthetic/",
+                    "Synthetic fixture", "Pexels License",
+                    "https://www.pexels.com/license/",
+                    "Synthetic fixture, Pexels License",
+                    hashlib.sha256(video.read_bytes()).hexdigest(), "2026-01-01T00:00:00Z",
+                ),
+            )
+        image = self.root / "fallback-image.png"
+        _write_test_png(image)
+        register_asset(
+            self.database, job["id"], image, "https://example.invalid/fallback.png",
+            "Synthetic fixture", "CC0-1.0", "Synthetic fallback, CC0-1.0", True,
+        )
+        music = self.root / "music.wav"
+        made_music = subprocess.run(
+            [
+                shutil.which("ffmpeg") or "ffmpeg", "-y", "-v", "error",
+                "-f", "lavfi", "-i", "sine=frequency=220:sample_rate=22050",
+                "-t", "2", "-c:a", "pcm_s16le", str(music),
+            ],
+            capture_output=True, text=True, timeout=30, check=False,
+        )
+        self.assertEqual(made_music.returncode, 0, made_music.stderr)
+        register_music_asset(
+            self.database, job["id"], music, "https://pixabay.com/music/synthetic/",
+            "Synthetic fixture", "Pixabay Content License",
+            "Synthetic fixture, Pixabay Content License", True,
+        )
+        with self.database.connect() as conn:
+            records = [dict(row) for row in conn.execute(
+                "SELECT * FROM assets WHERE job_id = ?", (job["id"],)
+            )]
+        narration = package / "narration.wav"
+        subtitles = package / "subtitles.srt"
+        synthesize(
+            "A moving city scene plays with quiet background music.",
+            narration, config, subtitles,
+        )
+        with self.assertRaisesRegex(RenderError, "do not cover the narration"):
+            render_video(
+                config, [video, music], narration, package / "uncovered.mp4",
+                records, subtitles,
+            )
+        result = render_video(
+            config, [image, video, music], narration, package / "final.mp4",
+            records, subtitles,
+        )
+        kinds = {stream["codec_type"] for stream in probe_video(config, result)["streams"]}
+        self.assertTrue({"video", "audio", "subtitle"}.issubset(kinds))
 
 
 def _timestamp_seconds(timestamp: str) -> float:

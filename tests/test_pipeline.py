@@ -70,6 +70,21 @@ class PipelineTests(unittest.TestCase):
         )
         for state in ("researching", "scripting", "awaiting_review", "rendering", "qa_failed"):
             transition_job(self.db, job["id"], state)
+        audio = self.root / "music.mp3"
+        audio.write_bytes(b"synthetic audio fixture")
+        with self.db.connect() as conn:
+            conn.execute(
+                """INSERT INTO assets
+                   (id, job_id, title, publisher, path, origin_url, creator, licence,
+                    attribution, commercial_use, file_sha256, retrieved_at, media_type)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'audio')""",
+                (
+                    "synthetic-music", job["id"], "Synthetic music", "Fixture",
+                    str(audio), "https://example.invalid/music", "Fixture",
+                    "CC0-1.0", "Fixture, CC0-1.0", "synthetic-hash",
+                    "2000-01-01T00:00:00Z",
+                ),
+            )
         image = self.root / "asset.png"
         image.write_bytes(base64.b64decode(
             "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8A"
@@ -87,10 +102,14 @@ class PipelineTests(unittest.TestCase):
                 "geofactory.cli.render_video",
                 return_value=Path(job["output_dir"]) / "final.mp4",
             ),
-            patch("geofactory.cli.make_thumbnail", side_effect=RuntimeError("thumbnail failed")),
+            patch(
+                "geofactory.cli.make_thumbnail",
+                side_effect=RuntimeError("thumbnail failed"),
+            ) as thumbnail,
             self.assertRaisesRegex(RuntimeError, "thumbnail failed"),
         ):
             cli.run(args)
+        self.assertEqual(thumbnail.call_args.kwargs["background"], image)
         recovered = get_job(self.db, job["id"])
         self.assertEqual(recovered["status"], "qa_failed")
         self.assertEqual(recovered["error"], "thumbnail failed")
@@ -231,6 +250,29 @@ class PipelineTests(unittest.TestCase):
             words = generate_evidence_script(self.db, job["id"], destination, config)
         self.assertGreaterEqual(words, 1200)
         self.assertIn("[clm-1]", destination.read_text(encoding="utf-8"))
+        with (
+            patch(
+                "geofactory.agents.script_agent.generate_groq_json",
+                return_value={
+                    "narration": narration,
+                    "chapters": [{"title": "Context"}],
+                    "scene_plan": [{
+                        "narration_section": "Opening",
+                        "visual_direction": "Illustrative diagram",
+                    }],
+                },
+            ) as groq_generate,
+            patch(
+                "geofactory.agents.script_agent.generate_json",
+                side_effect=AssertionError("Groq should take precedence when configured."),
+            ),
+        ):
+            groq_config = replace(config, groq_api_key="test-only-key")
+            groq_words = generate_evidence_script(
+                self.db, job["id"], destination, groq_config
+            )
+        self.assertEqual(groq_words, words)
+        groq_generate.assert_called_once()
 
     def test_documented_cli_dry_run_works_without_api_keys(self) -> None:
         config_path = self.root / "config.json"

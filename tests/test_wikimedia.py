@@ -246,13 +246,15 @@ class WikimediaTests(unittest.TestCase):
         conn.close()
         migrated = Database(path)
         migrated.initialize()
-        self.assertEqual(SCHEMA_VERSION, 4)
+        self.assertEqual(SCHEMA_VERSION, 5)
         with migrated.connect() as conn:
             self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], SCHEMA_VERSION)
             source_columns = {row["name"] for row in conn.execute("PRAGMA table_info(sources)")}
             asset_columns = {row["name"] for row in conn.execute("PRAGMA table_info(assets)")}
         self.assertTrue({"licence", "licence_url"}.issubset(source_columns))
-        self.assertTrue({"title", "publisher", "licence_url"}.issubset(asset_columns))
+        self.assertTrue(
+            {"title", "publisher", "licence_url", "media_type"}.issubset(asset_columns)
+        )
 
 
 if __name__ == "__main__":

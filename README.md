@@ -1,19 +1,21 @@
 # GeoFactory — local-first geography documentary workflow
 
-This repository now contains a Python command-line and local review workflow for preparing evidence-led geography documentary packages. It uses SQLite and the Python standard library, does not need API keys for its offline demo, defaults to loopback-only review, and never enables public publishing. The original `main.py` / `story_generator.py` starter files are preserved as-is and are not part of this workflow.
+This repository contains a local-first documentary workflow for preparing evidence-led geography packages. It uses SQLite, supports optional Edge TTS/Groq/Pexels/Pixabay providers, and keeps the offline demo usable without API keys. The dashboard binds to loopback, and public publishing remains disabled. The original `main.py` / `story_generator.py` starter files are preserved as-is and are not part of this workflow.
 
 **Important current boundary:** the offline demo creates a clearly labelled draft package, not a finished documentary. The optional online demo discovers Wikipedia sources and Commons images, but does not assert verified facts, narration, or a rendered video; QA blocks approval. Full editorial verification, current YouTube OAuth upload, automatic scheduling, and causal analytics are not implemented. Do not treat generated material or a passing automated check as editorial/legal review.
 
 ## Requirements and quick start
 
-- Python 3.11 or newer. The current environment was assessed at Python 3.14.
-- No Python dependencies are required. FFmpeg/FFprobe and eSpeak NG are needed for local narration/rendering; Ollama and Piper are optional.
+- Python 3.11 or newer (the current environment was assessed at Python 3.14).
+- Install the pinned provider and Pillow dependencies with the command below.
+- FFmpeg/FFprobe are required for audio/video rendering. eSpeak NG and Ollama remain optional local fallbacks.
 - The dashboard only binds to `127.0.0.1`, `localhost`, or `::1`.
 
 From the repository root:
 
 ```bash
 python3 --version
+python3 -m pip install -r requirements.txt
 python3 -m geofactory init
 python3 -m geofactory doctor
 python3 -m geofactory topics
@@ -52,7 +54,7 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
    python3 -m geofactory script JOB_ID
    ```
 
-   `research-online` records exact API article titles, URLs, publisher, access date, text licence, and licence URL. It saves a short article lead as a research lead, not a verified claim; check article citations and use independent sources. Source URLs must be HTTPS. Each factual claim added to a hand-reviewed ledger needs a source ID and a stated licence. With a local Ollama model configured, `script` requests a 1,200–1,800-word evidence-conditioned draft and validates claim IDs/word count. Model output still requires line-by-line human fact-checking. Without it, `script` writes evidence-aware notes, not finished narration.
+   `research-online` records exact API article titles, URLs, publisher, access date, text licence, and licence URL. It saves a short article lead as a research lead, not a verified claim; check article citations and use independent sources. Source URLs must be HTTPS. Each factual claim added to a hand-reviewed ledger needs a source ID and a stated licence.    With a Groq key configured, `script` prefers Groq; otherwise it can use an explicitly configured local Ollama model. The draft targets 1,500 words within a validated 1,200–1,800-word range and checks claim IDs. Groq receives the research evidence over the network. Model output still requires line-by-line human fact-checking. Without a usable model and verified claims, `script` writes evidence-aware notes, not finished narration.
 
 3. Search and download suitably licensed Wikimedia Commons images:
 
@@ -79,7 +81,7 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
    sudo apt-get install -y ffmpeg espeak-ng
    ```
 
-   Set `tts_backend` to `espeak-ng` in ignored `config.json`, then generate speech from reviewed narration text:
+   The template defaults to Edge TTS (`en-US-GuyNeural`); review Microsoft's current service terms before commercial use. For offline narration, set `tts_backend` to `espeak-ng` in ignored `config.json`. Generate speech only from reviewed narration text:
 
    ```bash
    python3 -m geofactory narrate JOB_ID --text-file path/to/reviewed_narration.txt
@@ -100,7 +102,7 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
    python3 -m geofactory serve
    ```
 
-   The renderer creates a 16:9 H.264 MP4 from registered stills with restrained Ken Burns motion, measured-duration narration, and a soft subtitle track. Set `width`/`height` to `1280`/`720` for a lower-resource HD render or `1920`/`1080` when the machine can sustain it. QA checks resolution and 8–15-minute duration, probes and fully decodes audio/video, checks audio for silence/clipping, validates subtitle syntax and synchronization, and compares the media manifest hashes. QA still requires source-linked claims to be individually human-reviewed, compatible asset rights, and attribution. Accurate basemaps, animated geography, frame-by-frame visual review, policy checks, and title/thumbnail agreement still require human work. Fix failures and rerun QA before approval.
+   The renderer prioritizes registered stock video, then uses licensed stills for any remaining narration duration with restrained Ken Burns motion; it can mix one registered music track at -20 dB under narration. It exports a 16:9 H.264 MP4 with measured-duration narration and soft subtitles. Set `width`/`height` to `1280`/`720` for a lower-resource HD render or `1920`/`1080` when the machine can sustain it. QA checks resolution and 8–15-minute duration, probes and fully decodes audio/video, checks audio for silence/clipping, validates subtitle syntax and synchronization, and compares the media manifest hashes. QA still requires source-linked claims to be individually human-reviewed, compatible asset rights, and attribution. Accurate basemaps, animated geography, frame-by-frame visual review, policy checks, and title/thumbnail agreement still require human work. Fix failures and rerun QA before approval.
 
 6. Approve only a QA-passing package in the dashboard or CLI:
 
@@ -112,7 +114,7 @@ For Windows PowerShell, run `.\setup.ps1`, then use `python -m geofactory ...` i
 
 ## Configuration and local models
 
-`config.example.json` is the validated template. `config.json` is local and ignored by Git. Paths resolve from its configured root. Publishing must remain disabled; attempts to enable it are rejected. The dashboard refuses non-loopback binds. The optional Ollama URL is also restricted to loopback, and `local_llm_model` must be explicitly configured. The model endpoint is never called unless the script command is configured for it.
+`config.example.json` is the validated template. `config.json` is local and ignored by Git. Paths resolve from its configured root. Publishing must remain disabled; attempts to enable it are rejected. The dashboard refuses non-loopback binds. The optional Ollama URL is also restricted to loopback, and `local_llm_model` must be explicitly configured. The local model endpoint is never called unless a model is configured; Groq is used only when its API key is supplied.
 
 Current machine assessment is reported by `python3 -m geofactory doctor`; RAM availability varies with the container workload. This host is Ubuntu 24.04, Python 3.14, x86_64, CPU-only, and has no swap or detected NVIDIA GPU. The latest post-render doctor check reported 7.8 GiB total RAM, about 3.5 GiB available, and 14.06 GiB free disk. FFmpeg/FFprobe and eSpeak NG are installed. Ollama 0.40.13 and `qwen2.5:0.5b` are installed. Inference was tested: a small prompt took 29.1 seconds and available RAM fell from about 4,703 MiB to 4,168 MiB. A schema-constrained full-script attempt took 89.9 seconds; the Ollama process peaked at about 641 MiB RSS and available RAM remained about 3,975 MiB, but the model returned only 74 narration words, below the required 1,200–1,800. Memory was not exhausted; usable long-script generation was not achieved. Keep `local_llm_model` empty and use the explicitly reviewed/manual fallback instead of treating that output as a script. A 1920x1080 render may be slow on CPU; use 1280x720 when resources are constrained. No Piper voice model was downloaded; the licence decision and fallback are documented above. No model is downloaded automatically on other hosts. The Ollama model was stopped after testing.
 
@@ -130,7 +132,48 @@ python3 -m geofactory demo-online
 
 This live command searches Wikipedia and Commons, records returned metadata, downloads compatible Commons images, exports attribution, and reruns QA. It does not create a finished documentary, fabricate claims, synthesize narration, or bypass human review.
 
-No secrets are needed by the current application. `.env.example` is documentation only; the application does not load `.env`. The starter repository had a tracked `.env`; it was removed from the current Git index while preserving the local file. Older Git commits may still contain its contents, so rotate any credential that may have appeared there and consider repository-history remediation separately.
+Provider credentials are optional and no key is required for the offline demo. `.env.example` is documentation only; the application does not load `.env` (supported variables must be exported by the shell). Store actual API keys only in ignored `config.json` or secure environment configuration. The starter repository had a tracked `.env`; it was removed from the current Git index while preserving the local file. Older Git commits may still contain its contents, so rotate any credential that may have appeared there and consider repository-history remediation separately.
+
+## Phase 5 optional online providers
+
+The pinned optional packages are `edge-tts`, `groq`, and Pillow. A fresh `init` uses Edge TTS with `en-US-GuyNeural`; change `edge_tts_voice` to `en-US-ChristopherNeural` if preferred. Existing `config.json` settings are preserved, so select `"tts_backend": "edge-tts"` to opt in on this checkout. Edge TTS sends narration text to Microsoft's online speech service through the community `edge-tts` package; verify current Microsoft/service terms and suitability for your intended commercial use. Generation fails explicitly on service errors. eSpeak NG and a separately licensed Piper voice remain alternatives.
+
+Configure credentials only in ignored `config.json` (never paste them into source, issue reports, or chat):
+
+```json
+{
+  "groq_api_key": "YOUR_GROQ_KEY",
+  "groq_model": "llama-3.3-70b-versatile",
+  "pexels_api_key": "YOUR_PEXELS_KEY",
+  "pixabay_api_key": "YOUR_PIXABAY_KEY",
+  "tts_backend": "edge-tts",
+  "edge_tts_voice": "en-US-GuyNeural"
+}
+```
+
+`script JOB_ID` uses Groq when `groq_api_key` is present and requests approximately 1,500 words (validated within the existing 1,200–1,800-word bounds); otherwise it retains the local Ollama/manual fallback. Research evidence is sent to Groq when that provider is configured. The script still requires source-linked claims and human review.
+
+Search official Pexels/Pixabay video APIs after setting their keys:
+
+```bash
+python3 -m geofactory stock-search JOB_ID --provider pexels --query "Tokyo city aerial" --downloads 2
+python3 -m geofactory stock-search JOB_ID --provider pixabay --query "Tokyo city aerial" --downloads 2
+```
+
+Downloaded MP4s are size/type/signature/FFprobe checked and recorded with creator, source URL, platform licence, attribution, retrieval time, and SHA-256. These providers' current content/API terms still need owner review. The renderer uses registered clips first at their actual duration, then licensed still images to cover any remaining narration; it refuses to loop insufficient footage. Ken Burns applies only to still-image portions. All downloaded asset rights and credits remain in the package ledger.
+
+**Music limitation and working fallback:** Pixabay's public API supports image/video search, not an official public music-search endpoint. GeoFactory does not scrape Pixabay's music pages or invent a music API. Download one track manually from the official Pixabay site (or use another source whose licence you verified), then register it:
+
+```bash
+python3 -m geofactory music-add JOB_ID --file path/to/track.mp3 \
+  --origin-url "https://pixabay.com/music/..." --creator "Creator" \
+  --license "Pixabay Content License" --attribution "Creator, track title, Pixabay Content License, source URL" \
+  --commercial-use
+```
+
+FFprobe validates the audio stream and the media ledger records the licence and credit. A render mixes one registered track at volume `0.1` (-20 dB) under narration with a limiter. With no registered track, narration-only rendering remains the default. Inspect the provider's current licence and the specific track's restrictions before use; CLI registration is an owner attestation, not a legal determination.
+
+Thumbnails are composed with Pillow as 1280×720 JPEGs using a hero still (or an extracted frame from an MP4), a dark gradient overlay, and bold fitted title text. `thumbnail.svg` is retained as a vector companion. Use the existing `render` command after registering stock clips and optional music; technical QA continues to block approval for unreviewed claims.
 
 ## Operations, backup, and recovery
 

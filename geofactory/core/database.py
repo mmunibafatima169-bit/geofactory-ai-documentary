@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 4
+SCHEMA_VERSION = 5
 
 
 class ClosingConnection(sqlite3.Connection):
@@ -113,7 +113,8 @@ class Database:
                             attribution TEXT NOT NULL,
                             commercial_use INTEGER NOT NULL,
                             file_sha256 TEXT NOT NULL,
-                            retrieved_at TEXT NOT NULL
+                            retrieved_at TEXT NOT NULL,
+                            media_type TEXT NOT NULL DEFAULT 'image'
                         );
                         CREATE TABLE IF NOT EXISTS approvals (
                             id TEXT PRIMARY KEY,
@@ -144,7 +145,9 @@ class Database:
                             subscribers_gained INTEGER,
                             notes TEXT NOT NULL DEFAULT ''
                         );
-                        PRAGMA user_version = 4;
+                        CREATE INDEX IF NOT EXISTS assets_job_media_type
+                            ON assets(job_id, media_type);
+                        PRAGMA user_version = 5;
                         COMMIT;
                         """
                     )
@@ -182,6 +185,14 @@ class Database:
                         )
                         conn.execute(
                             "ALTER TABLE claims ADD COLUMN reviewed_at TEXT NOT NULL DEFAULT ''"
+                        )
+                    elif version == 4:
+                        conn.execute(
+                            "ALTER TABLE assets ADD COLUMN media_type TEXT NOT NULL DEFAULT 'image'"
+                        )
+                        conn.execute(
+                            "CREATE INDEX IF NOT EXISTS assets_job_media_type "
+                            "ON assets(job_id, media_type)"
                         )
                     version += 1
                     conn.execute(f"PRAGMA user_version = {version}")

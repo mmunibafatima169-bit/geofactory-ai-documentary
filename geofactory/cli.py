@@ -26,7 +26,8 @@ from geofactory.core.jobs import (
     record_approval, transition_job,
 )
 from geofactory.media.asset_manager import (
-    export_asset_ledger, register_asset, search_and_download_commons,
+    export_asset_ledger, register_asset, register_music_asset,
+    search_and_download_commons, search_and_download_stock_videos,
     sha256_file, write_attribution_report,
 )
 from geofactory.media.tts_engine import (
@@ -76,6 +77,15 @@ def build_parser() -> argparse.ArgumentParser:
     commons.add_argument("--limit", type=int, default=8)
     commons.add_argument("--downloads", type=int, default=3)
 
+    stock = sub.add_parser(
+        "stock-search", help="Search/download videos through Pexels or Pixabay's official API"
+    )
+    stock.add_argument("job_id")
+    stock.add_argument("--provider", choices=("pexels", "pixabay"), required=True)
+    stock.add_argument("--query", required=True)
+    stock.add_argument("--limit", type=int, default=5)
+    stock.add_argument("--downloads", type=int, default=2)
+
     online_demo = sub.add_parser(
         "demo-online", help="Build a real Wikipedia/Commons research package; no publish/render claim"
     )
@@ -99,6 +109,17 @@ def build_parser() -> argparse.ArgumentParser:
     asset.add_argument("--licence", required=True)
     asset.add_argument("--attribution", required=True)
     asset.add_argument("--commercial-use", action="store_true", required=True)
+
+    music = sub.add_parser(
+        "music-add", help="Register owner-downloaded music after checking its licence"
+    )
+    music.add_argument("job_id")
+    music.add_argument("--file", type=Path, required=True)
+    music.add_argument("--origin-url", required=True)
+    music.add_argument("--creator", required=True)
+    music.add_argument("--license", required=True)
+    music.add_argument("--attribution", required=True)
+    music.add_argument("--commercial-use", action="store_true", required=True)
 
     narrate = sub.add_parser("narrate", help="Generate local narration or labelled text-only script")
     narrate.add_argument("job_id")
@@ -176,7 +197,12 @@ def _example_config() -> dict[str, Any]:
         "publishing_enabled": False,
         "ffmpeg": "ffmpeg",
         "ffprobe": "ffprobe",
-        "tts_backend": "none",
+        "tts_backend": "edge-tts",
+        "edge_tts_voice": "en-US-GuyNeural",
+        "groq_api_key": "",
+        "groq_model": "llama-3.3-70b-versatile",
+        "pexels_api_key": "",
+        "pixabay_api_key": "",
         "piper_executable": "piper",
         "piper_voice_model": "",
         "piper_voice_license": "",
@@ -200,6 +226,7 @@ def _doctor(config: FactoryConfig) -> dict[str, Any]:
         ("ollama", "ollama"),
         ("piper", config.piper_executable),
         ("espeak-ng", config.espeak_executable),
+        ("edge-tts", "edge-tts"),
     ):
         tools[name] = shutil.which(executable) or "not found"
     memory: dict[str, str] = {}
@@ -220,6 +247,8 @@ def _doctor(config: FactoryConfig) -> dict[str, Any]:
         required_tools.append("espeak-ng")
     elif config.tts_backend == "piper":
         required_tools.append("piper")
+    elif config.tts_backend == "edge-tts":
+        required_tools.append("edge-tts")
     missing_tools = [name for name in required_tools if tools[name] == "not found"]
     return {
         "python": sys.version.split()[0],
@@ -368,6 +397,23 @@ def run(args: argparse.Namespace) -> int:
         assets = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
         write_attribution_report(assets, package / "attribution.md")
         print(json.dumps(result, indent=2, ensure_ascii=False))
+    elif args.command == "stock-search":
+        if not 1 <= args.limit <= 10 or not 1 <= args.downloads <= 5:
+            raise ValueError("Stock search limits must be 1-10 results and 1-5 downloads.")
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        result = search_and_download_stock_videos(
+            db, args.job_id, args.query, package / "assets", config,
+            provider=args.provider, limit=args.limit, max_downloads=args.downloads,
+        )
+        assets = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
+        write_attribution_report(assets, package / "attribution.md")
+        print(json.dumps({
+            "provider": args.provider,
+            "downloaded": len(result["assets"]),
+            "rejected": result["rejected"],
+            "notice": "Provider stock media remains subject to each platform's current licence terms and human review.",
+        }, indent=2, ensure_ascii=False))
     elif args.command == "demo-online":
         if not 1 <= args.limit <= 10 or not 1 <= args.downloads <= 5:
             raise ValueError("Online demo limits must be 1-10 sources and 1-5 asset downloads.")
@@ -416,16 +462,20 @@ def run(args: argparse.Namespace) -> int:
         )
     elif args.command == "script":
         job = get_job(db, args.job_id)
-        if config.local_llm_model:
+        if config.groq_api_key.strip() or config.local_llm_model.strip():
             from geofactory.agents.script_agent import generate_evidence_script
 
             words = generate_evidence_script(
                 db, args.job_id, Path(job["output_dir"]) / "script.md", config
             )
-            print(f"Wrote local-model draft with {words} words; fact-check before use.")
+            provider = "Groq" if config.groq_api_key.strip() else "local model"
+            print(f"Wrote {provider} draft with {words} words; fact-check before use.")
         else:
             words = write_script_preview(db, args.job_id, Path(job["output_dir"]) / "script.md")
-            print(f"Wrote evidence-aware draft with {words} words; configure Ollama for a full draft.")
+            print(
+                f"Wrote evidence-aware draft with {words} words; configure Groq or Ollama "
+                "for a full draft."
+            )
     elif args.command == "asset-add":
         job = get_job(db, args.job_id)
         asset_id = register_asset(
@@ -436,6 +486,16 @@ def run(args: argparse.Namespace) -> int:
         records = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
         write_attribution_report(records, package / "attribution.md")
         print(f"Registered asset {asset_id}")
+    elif args.command == "music-add":
+        job = get_job(db, args.job_id)
+        asset_id = register_music_asset(
+            db, args.job_id, args.file, args.origin_url, args.creator, args.license,
+            args.attribution, args.commercial_use,
+        )
+        package = Path(job["output_dir"])
+        records = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
+        write_attribution_report(records, package / "attribution.md")
+        print(f"Registered background music asset {asset_id}; render will mix it at -20 dB.")
     elif args.command == "narrate":
         job = get_job(db, args.job_id)
         text = args.text_file.read_text(encoding="utf-8")
@@ -495,13 +555,21 @@ def run(args: argparse.Namespace) -> int:
                 config, images, package / "narration.wav", package / "final.mp4",
                 records, package / "subtitles.srt",
             )
-            if records:
+            hero_visual = next(
+                (
+                    Path(record["path"])
+                    for record in records
+                    if record.get("media_type", "image") in {"image", "video"}
+                ),
+                None,
+            )
+            if hero_visual is not None:
                 make_thumbnail(
                     job["topic"],
                     " ".join(job["topic"].split())[:48].strip(),
                     package / "thumbnail.jpg",
                     config,
-                    background=images[0],
+                    background=hero_visual,
                 )
         except (RenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
             transition_job(

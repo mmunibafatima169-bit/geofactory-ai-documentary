@@ -1,10 +1,10 @@
-"""Validated configuration with safe, local-only defaults."""
+"""Validated configuration with safe defaults for local and optional providers."""
 
 from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
@@ -27,6 +27,11 @@ class FactoryConfig:
     ffmpeg: str = "ffmpeg"
     ffprobe: str = "ffprobe"
     tts_backend: str = "none"
+    edge_tts_voice: str = "en-US-GuyNeural"
+    groq_api_key: str = field(default="", repr=False)
+    groq_model: str = "llama-3.3-70b-versatile"
+    pexels_api_key: str = field(default="", repr=False)
+    pixabay_api_key: str = field(default="", repr=False)
     piper_executable: str = "piper"
     piper_voice_model: Path | None = None
     piper_voice_license: str = ""
@@ -64,6 +69,9 @@ def load_config(path: Path | str | None = None) -> FactoryConfig:
         "publishing_enabled": os.environ.get("GEOFACTORY_PUBLISHING_ENABLED"),
         "dashboard_port": os.environ.get("GEOFACTORY_DASHBOARD_PORT"),
         "local_llm_model": os.environ.get("GEOFACTORY_LOCAL_LLM_MODEL"),
+        "groq_api_key": os.environ.get("GEOFACTORY_GROQ_API_KEY"),
+        "pexels_api_key": os.environ.get("GEOFACTORY_PEXELS_API_KEY"),
+        "pixabay_api_key": os.environ.get("GEOFACTORY_PIXABAY_API_KEY"),
     }
     for key, value in env_values.items():
         if value is not None:
@@ -81,6 +89,11 @@ def load_config(path: Path | str | None = None) -> FactoryConfig:
             ffmpeg=str(raw.get("ffmpeg", "ffmpeg")),
             ffprobe=str(raw.get("ffprobe", "ffprobe")),
             tts_backend=str(raw.get("tts_backend", "none")).lower(),
+            edge_tts_voice=str(raw.get("edge_tts_voice", "en-US-GuyNeural")),
+            groq_api_key=str(raw.get("groq_api_key", "")),
+            groq_model=str(raw.get("groq_model", "llama-3.3-70b-versatile")),
+            pexels_api_key=str(raw.get("pexels_api_key", "")),
+            pixabay_api_key=str(raw.get("pixabay_api_key", "")),
             piper_executable=str(raw.get("piper_executable", "piper")),
             piper_voice_model=(
                 _resolve_path(root, raw["piper_voice_model"], "")
@@ -120,8 +133,17 @@ def validate_config(cfg: FactoryConfig) -> None:
         raise ConfigurationError(
             "The dashboard must bind to loopback; remote access is intentionally unsupported."
         )
-    if cfg.tts_backend not in {"none", "piper", "espeak-ng"}:
-        raise ConfigurationError("tts_backend must be 'none', 'piper', or 'espeak-ng'.")
+    if cfg.tts_backend not in {"none", "piper", "espeak-ng", "edge-tts"}:
+        raise ConfigurationError(
+            "tts_backend must be 'none', 'piper', 'espeak-ng', or 'edge-tts'."
+        )
+    for name, value in (
+        ("groq_api_key", cfg.groq_api_key),
+        ("pexels_api_key", cfg.pexels_api_key),
+        ("pixabay_api_key", cfg.pixabay_api_key),
+    ):
+        if "\n" in value or "\r" in value:
+            raise ConfigurationError(f"{name} must be a single-line value.")
     if cfg.tts_backend == "piper":
         if not cfg.piper_voice_model or not cfg.piper_voice_model.is_file():
             raise ConfigurationError("Piper needs an existing piper_voice_model path.")

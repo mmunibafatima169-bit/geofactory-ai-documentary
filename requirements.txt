@@ -1,3 +1,5 @@
-# Core application uses only the Python standard library (Python >= 3.11).
-# Optional system tools: FFmpeg/FFprobe, Ollama, and Piper with a separately
-# verified voice-model licence. No paid APIs or Python packages are required.
+# Optional online/documentary-quality providers. API keys remain local in ignored
+# config.json; credentials are never included in this file.
+edge-tts==7.3.1
+groq==1.7.0
+Pillow==13.0.0

@@ -1,12 +1,10 @@
-"""Create a high-contrast 1280x720 JPEG thumbnail using FFmpeg."""
+"""Create a high-contrast 1280x720 JPEG thumbnail using Pillow."""
 
 from __future__ import annotations
 
 import html
-import json
 import shutil
 import subprocess
-import textwrap
 import uuid
 from pathlib import Path
 
@@ -15,11 +13,6 @@ from geofactory.core.config import FactoryConfig
 THUMBNAIL_WIDTH = 1280
 THUMBNAIL_HEIGHT = 720
 MAX_TITLE_CHARS = 48
-
-
-def _escape_filter_path(path: Path) -> str:
-    value = str(path.resolve())
-    return "".join(f"\\{character}" if character in "\\':,[];" else character for character in value)
 
 
 def _find_bold_font() -> Path:
@@ -45,7 +38,7 @@ def _find_bold_font() -> Path:
         if candidate.is_file():
             return candidate
     raise RuntimeError(
-        "No supported bold font was found. Install DejaVu Sans or Arial for FFmpeg drawtext."
+        "No supported bold font was found. Install DejaVu Sans or Arial for thumbnail text."
     )
 
 
@@ -79,77 +72,116 @@ def make_thumbnail(
 <text x="76" y="625" fill="#d6e5e3" font-family="Arial,sans-serif" font-size="25">{html.escape(topic[:70])}</text>
 </svg>"""
     svg_path.write_text(svg, encoding="utf-8")
-    executable = shutil.which(config.ffmpeg)
-    if not executable:
-        return svg_path
-
-    title_file = destination.with_name(f".{destination.stem}.{uuid.uuid4().hex}.txt")
     temporary_output = destination.with_name(
         f".{destination.stem}.{uuid.uuid4().hex}.tmp.jpg"
     )
-    wrapped_title = "\n".join(textwrap.wrap(title, width=22, break_long_words=False))
-    if len(wrapped_title.splitlines()) > 2:
-        raise ValueError("Thumbnail title must fit on no more than two lines.")
-    title_file.write_text(wrapped_title, encoding="utf-8")
+    poster_path: Path | None = None
     try:
-        font = _escape_filter_path(_find_bold_font())
-        text_path = _escape_filter_path(title_file)
-        source = background or svg_path
-        filters = (
-            f"scale={THUMBNAIL_WIDTH}:{THUMBNAIL_HEIGHT}:"
-            "force_original_aspect_ratio=increase,"
-            f"crop={THUMBNAIL_WIDTH}:{THUMBNAIL_HEIGHT},setsar=1,"
-            "drawbox=x=0:y=400:w=iw:h=320:color=black@0.72:t=fill,"
-            f"drawtext=fontfile={font}:textfile={text_path}:"
-            "fontcolor=white:fontsize=74:line_spacing=12:"
-            "x=64:y=470:shadowcolor=black@0.9:shadowx=3:shadowy=3"
-        )
-        result = subprocess.run(
-            [
-                executable, "-y", "-v", "error", "-i", str(source),
-                "-vf", filters, "-frames:v", "1", "-q:v", "2",
-                "-f", "image2", str(temporary_output),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=90,
-            check=False,
-        )
-        if result.returncode:
-            raise RuntimeError(
-                f"FFmpeg thumbnail generation failed ({result.returncode}): "
-                f"{result.stderr[-1500:]}"
+        from PIL import Image, ImageDraw, ImageFont
+
+        if background:
+            image_source = background
+            if background.suffix.lower() == ".mp4":
+                ffmpeg = shutil.which(config.ffmpeg)
+                if not ffmpeg:
+                    raise RuntimeError("FFmpeg is required to extract a thumbnail from video.")
+                poster_path = destination.with_name(
+                    f".{destination.stem}.{uuid.uuid4().hex}.poster.png"
+                )
+                result = subprocess.run(
+                    [
+                        ffmpeg, "-y", "-v", "error", "-ss", "1",
+                        "-i", str(background), "-frames:v", "1", str(poster_path),
+                    ],
+                    capture_output=True, text=True, timeout=60, check=False,
+                )
+                if result.returncode or not poster_path.is_file():
+                    raise RuntimeError(
+                        f"FFmpeg could not extract a video thumbnail frame: {result.stderr[-1000:]}"
+                    )
+                image_source = poster_path
+            with Image.open(image_source) as opened:
+                image = opened.convert("RGB")
+            source_ratio = image.width / image.height
+            target_ratio = THUMBNAIL_WIDTH / THUMBNAIL_HEIGHT
+            if source_ratio > target_ratio:
+                new_width = round(image.height * target_ratio)
+                left = (image.width - new_width) // 2
+                image = image.crop((left, 0, left + new_width, image.height))
+            else:
+                new_height = round(image.width / target_ratio)
+                top = (image.height - new_height) // 2
+                image = image.crop((0, top, image.width, top + new_height))
+            image = image.resize(
+                (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), Image.Resampling.LANCZOS
             )
-        if not temporary_output.is_file() or temporary_output.stat().st_size == 0:
-            raise RuntimeError("FFmpeg did not create a non-empty JPEG thumbnail.")
-        probe = subprocess.run(
-            [
-                shutil.which(config.ffprobe) or config.ffprobe, "-v", "error",
-                "-select_streams", "v:0", "-show_entries",
-                "stream=codec_name,width,height", "-of", "json",
-                str(temporary_output),
-            ],
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-        if probe.returncode:
-            raise RuntimeError(f"FFprobe could not validate the thumbnail: {probe.stderr[-1000:]}")
-        try:
-            stream = json.loads(probe.stdout)["streams"][0]
-        except (json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
-            raise RuntimeError("FFprobe returned invalid thumbnail metadata.") from exc
-        if (
-            stream.get("codec_name") != "mjpeg"
-            or stream.get("width") != THUMBNAIL_WIDTH
-            or stream.get("height") != THUMBNAIL_HEIGHT
-        ):
-            raise RuntimeError("Thumbnail must be an FFprobe-readable 1280x720 JPEG.")
+        else:
+            image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT))
+            pixels = image.load()
+            for y in range(THUMBNAIL_HEIGHT):
+                ratio = y / (THUMBNAIL_HEIGHT - 1)
+                color = (
+                    round(16 + 20 * ratio),
+                    round(33 + 85 * ratio),
+                    round(45 + 60 * ratio),
+                )
+                for x in range(THUMBNAIL_WIDTH):
+                    pixels[x, y] = color
+
+        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        overlay_draw = ImageDraw.Draw(overlay)
+        for y in range(360, THUMBNAIL_HEIGHT):
+            alpha = round(205 * ((y - 360) / (THUMBNAIL_HEIGHT - 360)))
+            overlay_draw.line((0, y, THUMBNAIL_WIDTH, y), fill=(5, 12, 18, alpha))
+        image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
+
+        font_path = _find_bold_font()
+        draw = ImageDraw.Draw(image)
+        words = title.split()
+        wrapped_title: list[str] | None = None
+        font: ImageFont.FreeTypeFont | None = None
+        font_size = 82
+        while font_size >= 36:
+            font = ImageFont.truetype(str(font_path), font_size)
+            full_width = draw.textbbox((0, 0), title, font=font, stroke_width=2)[2]
+            if full_width <= 1150:
+                wrapped_title = [title]
+                break
+            candidates: list[tuple[int, int, list[str]]] = []
+            for split in range(1, len(words)):
+                lines = [" ".join(words[:split]), " ".join(words[split:])]
+                widths = [
+                    draw.textbbox((0, 0), line, font=font, stroke_width=2)[2]
+                    for line in lines
+                ]
+                if max(widths) <= 1150:
+                    candidates.append((max(widths), abs(widths[0] - widths[1]), lines))
+            if candidates:
+                wrapped_title = min(candidates, key=lambda item: (item[0], item[1]))[2]
+                break
+            font_size -= 2
+        if wrapped_title is None or font is None:
+            raise ValueError("Thumbnail title cannot fit legibly at 1280x720.")
+        line_height = font_size + 16
+        block_height = line_height * len(wrapped_title)
+        y = 665 - block_height
+        for line in wrapped_title:
+            draw.text(
+                (64, y), line, font=font, fill="white",
+                stroke_width=3, stroke_fill=(0, 0, 0),
+            )
+            y += line_height
+        image.save(temporary_output, format="JPEG", quality=94, optimize=True)
+        with Image.open(temporary_output) as verification:
+            if verification.format != "JPEG" or verification.size != (
+                THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT
+            ):
+                raise RuntimeError("Pillow did not create a valid 1280x720 JPEG thumbnail.")
         temporary_output.replace(destination)
     except Exception:
         temporary_output.unlink(missing_ok=True)
         raise
     finally:
-        title_file.unlink(missing_ok=True)
+        if poster_path:
+            poster_path.unlink(missing_ok=True)
     return destination

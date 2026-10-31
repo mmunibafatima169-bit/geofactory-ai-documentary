@@ -12,7 +12,7 @@ from typing import Any
 
 from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
-from geofactory.media.asset_manager import ALLOWED_LICENSES, sha256_file
+from geofactory.media.asset_manager import ALLOWED_MEDIA_LICENSES, sha256_file
 from geofactory.media.video_editor import probe_video
 from geofactory.media.tts_engine import audio_duration_seconds
 
@@ -273,7 +273,7 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
     for asset in assets:
         path = Path(asset["path"])
         if (
-            asset["licence"] not in ALLOWED_LICENSES
+            asset["licence"] not in ALLOWED_MEDIA_LICENSES
             or not asset["commercial_use"]
             or not asset["attribution"].strip()
             or not asset["title"].strip()
@@ -292,9 +292,12 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             or record.get("licence") != asset["licence"]
             or record.get("licence_url") != asset["licence_url"]
             or record.get("attribution") != asset["attribution"]
+            or record.get("media_type", "image") != asset["media_type"]
         ):
             checks.append(_check("critical", "asset_ledger_mismatch", f"Asset ledger entry {asset['id']} differs from its persisted record."))
     if not assets:
+        checks.append(_check("critical", "no_rights_cleared_visuals", "No rights-cleared visual assets are registered."))
+    elif not any(asset["media_type"] in {"image", "video"} for asset in assets):
         checks.append(_check("critical", "no_rights_cleared_visuals", "No rights-cleared visual assets are registered."))
     attribution_path = package / "attribution.md"
     if assets and not attribution_path.is_file():
