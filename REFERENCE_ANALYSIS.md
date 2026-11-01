@@ -1,70 +1,100 @@
 # Reference Channel Analysis
 
-## Scope and safeguards
+## Scope and method
 
-This is a style-principles study of the public RealLifeLore channel, not a
-blueprint for reproducing any specific creative work. No scripts, wording,
-thumbnails, graphics, footage, branding, or transcripts are included. The
-downloaded thumbnail images and RSS metadata remain under the ignored
-`reference/` directory and are not part of this document or the repository
-changes.
+This study extracts broad style principles from public RealLifeLore thumbnails
+only. It does not reproduce or include any script, wording, thumbnail artwork,
+graphic, footage, or branding. No video transcripts or video-structure analysis
+were requested or collected.
 
-The public channel page identified channel ID `UCP5tjEmvPItGyLhmjdwP7Ww`. Its
-public YouTube RSS feed returned 15 video entries. The corresponding public
-`maxresdefault.jpg` thumbnails were downloaded for private visual analysis;
-all 15 files measured 1280x720 pixels.
+The public channel page and its public RSS feed were accessible without bypass
+or authentication. The feed identified channel ID `UCP5tjEmvPItGyLhmjdwP7Ww`
+and returned 15 recent entries. All 15 public
+`img.youtube.com/vi/VIDEO_ID/maxresdefault.jpg` thumbnails downloaded
+successfully. `reference/` was ignored by Git before downloads; the images,
+RSS listing, contact sheet, and per-image measurements remain private there.
 
-## Thumbnail observations
+Pillow measured dimensions, HSV saturation, and quantized colors. All 15 images
+were reviewed in a contact sheet; five were also opened at full resolution.
+OCR was unavailable. For text area, a reviewer visually annotated approximate
+headline/callout bounding boxes, and Pillow calculated their pixel-area share.
+Thus, text-area values are **manual bounding-box estimates**, not OCR, exact
+letter-pixel measurements, or fully automated detection. Arrow/marker and
+duration-corner classifications are also visual estimates.
 
-| Observation | Result | Evidence type |
+## Thumbnail findings
+
+| Observation | Result | Evidence |
 |---|---:|---|
-| Thumbnail count and dimensions | 15; all 1280x720 | Pillow measurement |
-| Mean of per-thumbnail mean HSV saturation | 0.512 | Pillow measurement, normalized 0-1 |
-| Median of per-thumbnail mean HSV saturation | 0.519 | Pillow measurement, normalized 0-1 |
-| Range of per-thumbnail mean HSV saturation | 0.336-0.703 | Derived from the 15 Pillow measurements |
-| Common colors in pooled quantized palette | Blue, teal, red/maroon, white, dark green/charcoal, and tan | Pillow palette measurement and visual review |
-| Headline text area | Not measured on the references | OCR tools were unavailable |
-| Arrows, markers, and map emphasis | Commonly visible in the reviewed contact sheet and selected images; not systematically counted | Qualitative visual review |
-| Bottom-right duration-badge clearance | Not measured across the reference set | Unverified |
-| Composition | Geographic/map imagery and high-contrast headline treatment recur, with variation in palette and placement | Qualitative visual review |
+| Sample size and dimensions | 15; all 1280×720 | Pillow measurement |
+| Mean of per-thumbnail mean HSV saturation | 0.5124 | Pillow, normalized 0–1 |
+| Median of per-thumbnail mean HSV saturation | 0.5194 | Pillow, normalized 0–1 |
+| Range of per-thumbnail mean HSV saturation | 0.3361–0.7028 | Pillow, normalized 0–1 |
+| Text-bearing headline/callout box area, mean | 9.25% of frame | Pillow area from visually annotated boxes; estimated |
+| Text-bearing headline/callout box area, median | 6.70% of frame | Pillow area from visually annotated boxes; estimated |
+| Text-bearing headline/callout box area, range | 0–23.82% | Pillow area from visually annotated boxes; estimated |
+| Thumbnail with a visible arrow or directional route | 8/15 | Visual classification |
+| Thumbnail with a map marker or highlighted region | 12/15 | Visual classification |
+| Bottom-right duration-badge area visually clear | 12/15 | Subjective visual classification |
+| Distinct broad compositions in the sample | 15/15 | Visual classification; descriptive, not a performance metric |
 
-The most frequent pooled palette bins were individually small (the largest was
-2.23% of pooled pixels), so the color summary should not be read as a single
-dominant color for the set. Color and layout observations are descriptive, not
-claims about performance.
+The ten largest colors in the equally weighted, downsampled pooled palette were:
 
-The `headline_block_coverage_fraction` emitted by GeoFactory is a generated
-thumbnail measurement: padded headline bounding-box area divided by canvas
-area. It is not OCR-derived letter coverage and is not a measurement of the
-reference thumbnails. The engine's 5%-23% headline-block target is an explicit
-design heuristic, not a measured reference-channel range.
+| Color | Share |
+|---|---:|
+| `#163E5A` (deep blue) | 13.37% |
+| `#090B18` (near-black) | 13.34% |
+| `#B89264` (earth tan) | 12.77% |
+| `#598C7D` (teal/green) | 10.77% |
+| `#E9BE96` (light earth) | 10.45% |
+| `#93603A` (brown) | 9.33% |
+| `#A3B8A5` (muted green) | 8.64% |
+| `#6F2137` (maroon) | 7.82% |
+| `#4C574F` (dark green/gray) | 7.46% |
+| `#F7EED6` (warm white) | 6.05% |
 
-## Video structure
+Palette shares are quantized pixel shares after resizing each source to
+160×90, with each thumbnail contributing the same number of pixels. Smaller
+bright accents, including red, yellow, and white, also appear in the visual
+review but are not among those ten pooled bins.
 
-Gemini video analysis was **not run**. Sending the local Gemini API credential
-to an external service for this analysis was avoided. As a result, there is no
-Gemini error or model output to report, and no transcripts or video-derived
-claims were stored.
+### Style principles supported by this sample
 
-The following are therefore unverified: hook length and type, chapter pattern,
-map/graphic frequency, typical shot length, narration pace, and treatment of
-uncertainty or disputed claims. No script prompt or map-scene pacing changes
-were made based on those unverified properties.
+- Lead with geographic context: map, terrain, satellite-style imagery, or a
+  globe is often the largest visual element.
+- Use a small number of strongly contrasting map highlights, route lines,
+  arrows, markers, or labels to direct attention.
+- Keep headline/callout blocks compact relative to the map; preserve a visible
+  corner for a duration badge.
+- Use varied earth, blue/teal, dark, and occasional saturated accent colors.
+- Vary crop, visual balance, headline placement, and annotation layout rather
+  than repeating one composition.
 
-## GeoFactory changes based on available evidence
+These are descriptive principles, not requirements to imitate any reference
+thumbnail. Every GeoFactory composition remains original and uses its own
+licensed or generated map elements.
 
-- The thumbnail style score records generated palette saturation and headline
-  block coverage, checks for a geographic highlight, an arrow/marker, concise
-  text, and a clear bottom-right badge area, and requires distinct compositions
-  across the generated concepts.
-- The saturation median is recorded as a measured reference statistic; the
-  generated thumbnail's saturation check is a design heuristic and does not
-  imply that matching it improves views.
-- Layout variety is derived from each concept's map anchor, headline position,
-  arrow style, and palette rather than being marked true unconditionally.
-- QA validates the saved per-concept metrics and score rubric, and verifies
-  that each editable concept master is 1920x1080.
+## Video structure and other unverified findings
 
-These are style checks, not guarantees of geographic accuracy, factual
-correctness, audience response, or video success. Human review remains
-required.
+The videos themselves were not analyzed. Hook type or duration, chapter pattern,
+map/graphic screen-time share, shot length, narration pace, and treatment of
+uncertainty or disputed claims are **unverified**. No Gemini request was made
+and no API key was transmitted. Public availability of an API key does not make
+video analysis necessary for this thumbnail-only task.
+
+## GeoFactory application
+
+- Thumbnail concept masters are rendered at 3840×2160 (2× supersampling) and
+  downsampled to 1920×1080; the selected platform export remains 1280×720.
+- Thumbnail geometry uses pinned Natural Earth 1:50m Admin 0 Countries data,
+  release 5.1.1. Its public-domain licence, source, download date, and checksum
+  are recorded. Map animation scenes continue to use their separate 1:110m data.
+- The style rubric uses the observed per-image saturation range and the
+  manually estimated 0–23.82% headline/callout-box area range as reference
+  bounds. Its generated-thumbnail coverage measurement is still a padded
+  headline-box area calculation, not detected text.
+- Arrow/marker presence, a clear duration corner, concise headline length, and
+  distinct concept layouts are checked as design heuristics.
+
+Scores do not establish geographic or factual accuracy and do not predict
+views. Human review remains necessary.

@@ -490,9 +490,10 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             if winner_scores["style_match"] < 70:
                 checks.append(_check(
                     "critical", "thumbnail_style_match_low",
-                    "Improve the map hero, highlighted region, arrow/marker, saturation, headline "
-                    "coverage, layout variety, 2-5 word text, bottom-right badge clearance, and "
-                    "160px legibility before approval.",
+                    "Improve the map hero/highlight, add a relevant arrow or marker, bring "
+                    "saturation and headline-box area into the measured-reference bands, vary "
+                    "the concept layout, keep text to 2-5 words, preserve bottom-right badge "
+                    "clearance, and verify 160px legibility.",
                 ))
             if winner_scores["mobile_readability"] < 70:
                 checks.append(_check(

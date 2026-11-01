@@ -12,9 +12,6 @@ from typing import Any
 from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from geofactory.media.map_animation_engine import (
-    DATASET_LICENSE,
-    DATASET_NAME,
-    DATASET_VERSION,
     _bounds,
     _coordinates_to_pixels,
     _feature_code,
@@ -37,7 +34,11 @@ STOP_WORDS = {
 MASTER_WIDTH = 1920
 MASTER_HEIGHT = 1080
 RENDER_SCALE = MASTER_WIDTH / THUMBNAIL_WIDTH
-REFERENCE_SATURATION_MEDIAN = 0.519
+SUPERSAMPLE_FACTOR = 2
+REFERENCE_SATURATION_MEDIAN = 0.5194
+REFERENCE_SATURATION_RANGE = (0.3361, 0.7028)
+REFERENCE_HEADLINE_COVERAGE_MEDIAN = 0.067
+REFERENCE_HEADLINE_COVERAGE_RANGE = (0.0, 0.2382)
 
 CONCEPTS: tuple[dict[str, Any], ...] = (
     {
@@ -126,6 +127,7 @@ def _draw_map(
     palette: dict[str, tuple[int, int, int]],
     zoom: float,
     anchor: str,
+    scale: float,
 ) -> tuple[int, int]:
     width, height = image.size
     draw = ImageDraw.Draw(image)
@@ -165,7 +167,7 @@ def _draw_map(
                         draw.polygon(hole, fill=palette["ocean"])
                 draw.line(
                     points + [points[0]], fill=outline,
-                    width=round((3 if highlighted else 2) * RENDER_SCALE),
+                    width=round((3 if highlighted else 2) * scale),
                 )
     return target_pixel
 
@@ -234,9 +236,9 @@ def _score_concept(
         "map_hero_present": True,
         "highlighted_region_present": country_found,
         "arrow_or_marker_present": arrow_count > 0,
-        "high_saturation_palette": 0.40 <= saturation <= 0.82,
-        "headline_block_coverage_in_design_range": (
-            0.05 <= headline_block_coverage <= 0.23
+        "reference_saturation_band": 0.30 <= saturation <= 0.75,
+        "headline_block_coverage_in_visual_estimate_range": (
+            0.02 <= headline_block_coverage <= 0.24
         ),
         "short_bold_text": 2 <= len(words) <= 5,
         "layout_variety_present": layout_variety,
@@ -276,9 +278,19 @@ def _score_concept(
         "measurements": {
             "palette_mean_saturation": round(saturation, 3),
             "headline_block_coverage_fraction": round(headline_block_coverage, 3),
-            "headline_block_coverage_design_range": [0.05, 0.23],
+            "headline_block_coverage_design_range": [0.02, 0.24],
             "reference_median_saturation": REFERENCE_SATURATION_MEDIAN,
+            "reference_saturation_range": list(REFERENCE_SATURATION_RANGE),
+            "reference_median_headline_bbox_area_fraction_visual_estimate": (
+                REFERENCE_HEADLINE_COVERAGE_MEDIAN
+            ),
+            "reference_headline_bbox_area_fraction_visual_estimate_range": list(
+                REFERENCE_HEADLINE_COVERAGE_RANGE
+            ),
             "arrow_count": arrow_count,
+            "reference_arrows_or_routes_visible_count_visual_estimate": 8,
+            "reference_marker_or_highlight_visible_count_visual_estimate": 12,
+            "reference_bottom_right_clear_count_visual_estimate": 12,
             "layout_variety_pass": layout_variety,
             "bottom_right_duration_area_clear": badge_area_clear,
         },
@@ -296,11 +308,12 @@ def _render_concept(
     layout_variety: bool,
 ) -> tuple[dict[str, Any], int]:
     palette = concept["palette"]
-    scale = RENDER_SCALE
-    width, height = MASTER_WIDTH, MASTER_HEIGHT
+    scale = RENDER_SCALE * SUPERSAMPLE_FACTOR
+    width, height = MASTER_WIDTH * SUPERSAMPLE_FACTOR, MASTER_HEIGHT * SUPERSAMPLE_FACTOR
     image = Image.new("RGB", (width, height), palette["ocean"])
     target_point = _draw_map(
-        image, collection, target, palette, concept["zoom"], concept["map_anchor"]
+        image, collection, target, palette, concept["zoom"], concept["map_anchor"],
+        scale,
     )
     draw = ImageDraw.Draw(image)
     _draw_arrow(
@@ -413,11 +426,15 @@ def _render_concept(
         for box in [*headline_boxes, target_box]
     )
     headline_block_coverage = headline_area / (width * height)
-    saturation = ImageStat.Stat(image.convert("HSV")).mean[1] / 255
+    master = image.resize(
+        (MASTER_WIDTH, MASTER_HEIGHT), Image.Resampling.LANCZOS
+    )
+    saturation = ImageStat.Stat(master.convert("HSV")).mean[1] / 255
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(output_path, format="PNG", optimize=True)
+    master.save(output_path, format="PNG", optimize=True)
     score = _score_concept(
-        headline, topic, headline_size, True, scale,
+        headline, topic, round(headline_size / SUPERSAMPLE_FACTOR), True,
+        RENDER_SCALE,
         headline_block_coverage, saturation,
         arrow_count=1, layout_variety=layout_variety,
         badge_area_clear=badge_area_clear,
@@ -437,7 +454,7 @@ def generate_thumbnail_concepts(
     if not topic.strip():
         raise ThumbnailEngineError("A documentary topic is required.")
     short_headline = _headline_for(topic, headline)
-    collection, dataset = load_natural_earth(data_root)
+    collection, dataset = load_natural_earth(data_root, scale=50)
     target = find_country(collection, country_iso_a3)
     country_name = str(
         target.get("properties", {}).get("ADMIN")
@@ -473,13 +490,18 @@ def generate_thumbnail_concepts(
             "headline": short_headline,
             "master_dimensions": [MASTER_WIDTH, MASTER_HEIGHT],
             "platform_dimensions": [THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT],
+            "render_dimensions_before_downsample": [
+                MASTER_WIDTH * SUPERSAMPLE_FACTOR,
+                MASTER_HEIGHT * SUPERSAMPLE_FACTOR,
+            ],
             "dataset_name": dataset["dataset_name"],
             "dataset_version": dataset["dataset_version"],
             "dataset_licence": dataset["licence"],
             "dataset_download_date": dataset["download_date"],
             "dataset_sha256": dataset["sha256"],
+            "supersample_factor": SUPERSAMPLE_FACTOR,
             "concept": concept,
-            "font_size_px": font_size,
+            "font_size_px": round(font_size / SUPERSAMPLE_FACTOR),
             "qualification": "Natural Earth boundaries; disputed status may differ",
             "no_logo_or_channel_branding": True,
         }
@@ -520,9 +542,9 @@ def generate_thumbnail_concepts(
         "country_name": country_name,
         "headline": short_headline,
         "dataset": {
-            "name": DATASET_NAME,
-            "version": DATASET_VERSION,
-            "licence": DATASET_LICENSE,
+            "name": dataset["dataset_name"],
+            "version": dataset["dataset_version"],
+            "licence": dataset["licence"],
             "download_date": dataset["download_date"],
             "sha256": dataset["sha256"],
         },

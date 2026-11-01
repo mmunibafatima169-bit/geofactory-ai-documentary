@@ -27,6 +27,11 @@ DATASET_URL = (
     "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
     "v5.1.1/geojson/ne_110m_admin_0_countries.geojson"
 )
+DATASET_50M_NAME = "Natural Earth 1:50m Admin 0 Countries"
+DATASET_50M_URL = (
+    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+    "v5.1.1/geojson/ne_50m_admin_0_countries.geojson"
+)
 DATASET_LICENSE_URL = "https://www.naturalearthdata.com/about/terms-of-use/"
 MAX_DATASET_BYTES = 20 * 1024 * 1024
 QUALIFICATION = "Boundaries follow Natural Earth de facto depiction; disputed status may differ."
@@ -62,19 +67,41 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def dataset_paths(root: Path) -> tuple[Path, Path]:
+def _dataset_spec(scale: int) -> tuple[str, str, str, str]:
+    if scale == 110:
+        return (
+            DATASET_NAME,
+            DATASET_URL,
+            "ne_110m_admin_0_countries",
+            "ne_110m_admin_0_countries.geojson",
+        )
+    if scale == 50:
+        return (
+            DATASET_50M_NAME,
+            DATASET_50M_URL,
+            "ne_50m_admin_0_countries",
+            "ne_50m_admin_0_countries.geojson",
+        )
+    raise MapAnimationError("Natural Earth scale must be 50 or 110.")
+
+
+def dataset_paths(root: Path, scale: int = 110) -> tuple[Path, Path]:
+    _, _, _, filename = _dataset_spec(scale)
     directory = root / "data" / "natural-earth"
     return (
-        directory / "ne_110m_admin_0_countries.geojson",
-        directory / "dataset.json",
+        directory / filename,
+        directory / ("dataset.json" if scale == 110 else f"dataset-{scale}m.json"),
     )
 
 
-def _download_dataset(destination: Path, manifest_path: Path) -> dict[str, Any]:
-    parsed = urlparse(DATASET_URL)
+def _download_dataset(
+    destination: Path, manifest_path: Path, scale: int = 110
+) -> dict[str, Any]:
+    dataset_name, dataset_url, feature_collection_name, _ = _dataset_spec(scale)
+    parsed = urlparse(dataset_url)
     if parsed.scheme != "https" or parsed.hostname != "raw.githubusercontent.com":
         raise MapAnimationError("Natural Earth download URL is not the approved HTTPS host.")
-    request = Request(DATASET_URL, headers={"User-Agent": "GeoFactory/1.0"})
+    request = Request(dataset_url, headers={"User-Agent": "GeoFactory/1.0"})
     try:
         with urlopen(request, timeout=60) as response:
             final_url = urlparse(response.geturl())
@@ -98,7 +125,7 @@ def _download_dataset(destination: Path, manifest_path: Path) -> dict[str, Any]:
     if (
         not isinstance(data, dict)
         or data.get("type") != "FeatureCollection"
-        or data.get("name") != "ne_110m_admin_0_countries"
+        or data.get("name") != feature_collection_name
         or not isinstance(data.get("features"), list)
         or not data["features"]
     ):
@@ -115,11 +142,11 @@ def _download_dataset(destination: Path, manifest_path: Path) -> dict[str, Any]:
     temporary.replace(destination)
     now = datetime.now(timezone.utc)
     manifest = {
-        "dataset_name": DATASET_NAME,
+        "dataset_name": dataset_name,
         "dataset_version": DATASET_VERSION,
         "licence": DATASET_LICENSE,
         "licence_url": DATASET_LICENSE_URL,
-        "dataset_url": DATASET_URL,
+        "dataset_url": dataset_url,
         "download_date": now.date().isoformat(),
         "downloaded_at": now.isoformat(),
         "sha256": _sha256(destination),
@@ -128,27 +155,30 @@ def _download_dataset(destination: Path, manifest_path: Path) -> dict[str, Any]:
     return manifest
 
 
-def load_natural_earth(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def load_natural_earth(
+    root: Path, *, scale: int = 110
+) -> tuple[dict[str, Any], dict[str, Any]]:
     """Load verified cached data, downloading the pinned public-domain release as needed."""
-    data_path, manifest_path = dataset_paths(root)
+    dataset_name, dataset_url, feature_collection_name, _ = _dataset_spec(scale)
+    data_path, manifest_path = dataset_paths(root, scale)
     manifest: dict[str, Any] | None = None
     if data_path.is_file() and manifest_path.is_file():
         try:
             parsed = json.loads(manifest_path.read_text(encoding="utf-8"))
             if (
                 isinstance(parsed, dict)
-                and parsed.get("dataset_name") == DATASET_NAME
+                and parsed.get("dataset_name") == dataset_name
                 and parsed.get("dataset_version") == DATASET_VERSION
                 and parsed.get("licence") == DATASET_LICENSE
                 and parsed.get("licence_url") == DATASET_LICENSE_URL
-                and parsed.get("dataset_url") == DATASET_URL
+                and parsed.get("dataset_url") == dataset_url
                 and parsed.get("sha256") == _sha256(data_path)
             ):
                 manifest = parsed
         except (OSError, json.JSONDecodeError):
             manifest = None
     if manifest is None:
-        manifest = _download_dataset(data_path, manifest_path)
+        manifest = _download_dataset(data_path, manifest_path, scale)
     try:
         collection = json.loads(data_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -156,6 +186,7 @@ def load_natural_earth(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     if (
         not isinstance(collection, dict)
         or collection.get("type") != "FeatureCollection"
+        or collection.get("name") != feature_collection_name
         or not isinstance(collection.get("features"), list)
     ):
         raise MapAnimationError("Cached Natural Earth data is not a GeoJSON FeatureCollection.")

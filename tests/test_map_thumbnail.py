@@ -7,7 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from PIL import Image
 
@@ -20,10 +20,13 @@ from geofactory.media.map_animation_engine import (
     DATASET_VERSION,
     MapAnimationError,
     MapSceneSpec,
+    _download_dataset,
     create_map_scene,
+    dataset_paths,
+    load_natural_earth,
     validate_map_scene,
 )
-from geofactory.media.thumbnail_engine import generate_thumbnail_concepts
+from geofactory.media.thumbnail_engine import _draw_map, generate_thumbnail_concepts
 from geofactory.media.video_editor import probe_video, render_video
 from geofactory.quality.qa_engine import run_qa
 
@@ -67,6 +70,10 @@ FIXTURE_MANIFEST = {
     "downloaded_at": "2026-11-01T00:00:00+00:00",
     "sha256": "a" * 64,
 }
+THUMBNAIL_FIXTURE_MANIFEST = {
+    **FIXTURE_MANIFEST,
+    "dataset_name": "Natural Earth 1:50m Admin 0 Countries",
+}
 
 
 class MapAndThumbnailTests(unittest.TestCase):
@@ -76,6 +83,36 @@ class MapAndThumbnailTests(unittest.TestCase):
 
     def tearDown(self) -> None:
         self.temp.cleanup()
+
+    def test_50m_country_data_download_is_pinned_and_cached(self) -> None:
+        collection = {
+            "type": "FeatureCollection",
+            "name": "ne_50m_admin_0_countries",
+            "features": FIXTURE_DATA["features"],
+        }
+        body = json.dumps(collection).encode("utf-8")
+        response = MagicMock()
+        response.__enter__.return_value = response
+        response.__exit__.return_value = False
+        response.geturl.return_value = (
+            "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+            "v5.1.1/geojson/ne_50m_admin_0_countries.geojson"
+        )
+        response.read.return_value = body
+        data_path, manifest_path = dataset_paths(self.root, scale=50)
+        with patch(
+            "geofactory.media.map_animation_engine.urlopen", return_value=response
+        ) as open_url:
+            manifest = _download_dataset(data_path, manifest_path, scale=50)
+            cached_collection, cached_manifest = load_natural_earth(
+                self.root, scale=50
+            )
+        self.assertIn("ne_50m_admin_0_countries.geojson", str(data_path))
+        self.assertEqual(open_url.call_args.args[0].full_url, response.geturl())
+        self.assertEqual(manifest["dataset_name"], "Natural Earth 1:50m Admin 0 Countries")
+        self.assertEqual(manifest["licence"], "Public Domain")
+        self.assertEqual(cached_collection["name"], "ne_50m_admin_0_countries")
+        self.assertEqual(cached_manifest, manifest)
 
     def test_map_scene_records_dataset_and_rejects_tampering(self) -> None:
         if not MEDIA_TOOLS:
@@ -158,13 +195,25 @@ class MapAndThumbnailTests(unittest.TestCase):
         self.assertTrue({"video", "audio", "subtitle"}.issubset(stream_types))
 
     def test_thumbnail_engine_emits_three_distinct_scored_editable_concepts(self) -> None:
-        with patch(
-            "geofactory.media.thumbnail_engine.load_natural_earth",
-            return_value=(FIXTURE_DATA, FIXTURE_MANIFEST),
+        with (
+            patch(
+                "geofactory.media.thumbnail_engine.load_natural_earth",
+                return_value=(FIXTURE_DATA, THUMBNAIL_FIXTURE_MANIFEST),
+            ) as load_data,
+            patch(
+                "geofactory.media.thumbnail_engine._draw_map",
+                wraps=_draw_map,
+            ) as draw_map,
         ):
             result = generate_thumbnail_concepts(
                 "Tokyo geography marvel", "JPN", self.root / "output", self.root
             )
+        load_data.assert_called_once_with(self.root, scale=50)
+        self.assertEqual(draw_map.call_count, 3)
+        self.assertTrue(all(
+            call.args[0].size == (3840, 2160)
+            for call in draw_map.call_args_list
+        ))
         self.assertEqual(len(result["concepts"]), 3)
         self.assertEqual(len({entry["concept_id"] for entry in result["concepts"]}), 3)
         self.assertTrue(all(entry["scores"]["style_match"] >= 85 for entry in result["concepts"]))
@@ -186,7 +235,7 @@ class MapAndThumbnailTests(unittest.TestCase):
                 entry["measurements"]["headline_block_coverage_fraction"],
                 high,
             )
-            self.assertEqual(entry["measurements"]["reference_median_saturation"], 0.519)
+            self.assertEqual(entry["measurements"]["reference_median_saturation"], 0.5194)
             self.assertGreater(
                 entry["measurements"]["palette_mean_saturation"], 0
             )
@@ -196,6 +245,10 @@ class MapAndThumbnailTests(unittest.TestCase):
             )
             self.assertTrue(source["no_logo_or_channel_branding"])
             self.assertEqual(source["dataset_version"], "5.1.1")
+            self.assertEqual(
+                source["dataset_name"], "Natural Earth 1:50m Admin 0 Countries"
+            )
+            self.assertEqual(source["supersample_factor"], 2)
         with Image.open(result["outputs"]["winner"]) as winner:
             self.assertEqual(winner.size, (1280, 720))
         with Image.open(result["outputs"]["master"]) as master:
@@ -210,6 +263,8 @@ class MapAndThumbnailTests(unittest.TestCase):
             )
             self.assertEqual(recipe["master_dimensions"], [1920, 1080])
             self.assertEqual(recipe["platform_dimensions"], [1280, 720])
+            self.assertEqual(recipe["supersample_factor"], 2)
+            self.assertEqual(recipe["render_dimensions_before_downsample"], [3840, 2160])
         with Image.open(result["outputs"]["contact_sheet"]) as contact:
             self.assertEqual(contact.size, (1200, 225))
         with Image.open(result["outputs"]["mobile_preview"]) as preview:
@@ -232,9 +287,15 @@ class MapAndThumbnailTests(unittest.TestCase):
         package = Path(job["output_dir"])
         package.mkdir(parents=True, exist_ok=True)
         scene_path = package / "maps" / "JPN-01.mp4"
-        with patch(
-            "geofactory.media.map_animation_engine.load_natural_earth",
-            return_value=(FIXTURE_DATA, FIXTURE_MANIFEST),
+        with (
+            patch(
+                "geofactory.media.map_animation_engine.load_natural_earth",
+                return_value=(FIXTURE_DATA, FIXTURE_MANIFEST),
+            ),
+            patch(
+                "geofactory.media.thumbnail_engine.load_natural_earth",
+                return_value=(FIXTURE_DATA, THUMBNAIL_FIXTURE_MANIFEST),
+            ),
         ):
             scene = create_map_scene(
                 self.root, scene_path, MapSceneSpec("JPN", duration_seconds=2),
