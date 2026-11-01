@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import subprocess
@@ -117,7 +118,7 @@ class MapAndThumbnailTests(unittest.TestCase):
         audio_result = subprocess.run(
             [
                 ffmpeg, "-y", "-v", "error", "-f", "lavfi", "-i",
-                "sine=frequency=440:sample_rate=22050", "-t", "2",
+                "sine=frequency=440:sample_rate=22050", "-t", "4",
                 "-c:a", "pcm_s16le", str(narration),
             ],
             capture_output=True, text=True, timeout=30, check=False,
@@ -125,9 +126,19 @@ class MapAndThumbnailTests(unittest.TestCase):
         self.assertEqual(audio_result.returncode, 0, audio_result.stderr)
         subtitles = self.root / "subtitles.srt"
         subtitles.write_text(
-            "1\n00:00:00,000 --> 00:00:02,000\nMap scene test.\n",
+            "1\n00:00:00,000 --> 00:00:04,000\nMap scene and still test.\n",
             encoding="utf-8",
         )
+        image = self.root / "nonstandard-aspect.png"
+        Image.new("RGB", (777, 521), (40, 90, 130)).save(image)
+        asset = {
+            "path": str(image),
+            "media_type": "image",
+            "licence": "Public Domain",
+            "commercial_use": True,
+            "attribution": "Synthetic fixture",
+            "file_sha256": hashlib.sha256(image.read_bytes()).hexdigest(),
+        }
         config = FactoryConfig(
             root=self.root,
             database_path=self.root / "factory.sqlite3",
@@ -137,7 +148,7 @@ class MapAndThumbnailTests(unittest.TestCase):
             height=180,
         )
         rendered = render_video(
-            config, [], narration, self.root / "final.mp4", [],
+            config, [image], narration, self.root / "final.mp4", [asset],
             subtitles, scene_videos=[destination],
         )
         stream_types = {
@@ -158,6 +169,27 @@ class MapAndThumbnailTests(unittest.TestCase):
         self.assertEqual(len({entry["concept_id"] for entry in result["concepts"]}), 3)
         self.assertTrue(all(entry["scores"]["style_match"] >= 85 for entry in result["concepts"]))
         for entry in result["concepts"]:
+            self.assertTrue(entry["measurements"]["layout_variety_pass"])
+            self.assertTrue(entry["measurements"]["bottom_right_duration_area_clear"])
+            self.assertGreaterEqual(
+                entry["measurements"]["headline_block_coverage_fraction"], 0
+            )
+            self.assertLessEqual(
+                entry["measurements"]["headline_block_coverage_fraction"], 1
+            )
+            low, high = entry["measurements"]["headline_block_coverage_design_range"]
+            self.assertLessEqual(
+                low,
+                entry["measurements"]["headline_block_coverage_fraction"],
+            )
+            self.assertLessEqual(
+                entry["measurements"]["headline_block_coverage_fraction"],
+                high,
+            )
+            self.assertEqual(entry["measurements"]["reference_median_saturation"], 0.519)
+            self.assertGreater(
+                entry["measurements"]["palette_mean_saturation"], 0
+            )
             self.assertTrue((self.root / "output" / entry["image"]).is_file())
             source = json.loads(
                 (self.root / "output" / entry["editable_source"]).read_text(encoding="utf-8")
@@ -166,6 +198,18 @@ class MapAndThumbnailTests(unittest.TestCase):
             self.assertEqual(source["dataset_version"], "5.1.1")
         with Image.open(result["outputs"]["winner"]) as winner:
             self.assertEqual(winner.size, (1280, 720))
+        with Image.open(result["outputs"]["master"]) as master:
+            self.assertEqual(master.size, (1920, 1080))
+        for entry in result["concepts"]:
+            with Image.open(self.root / "output" / entry["image"]) as concept_image:
+                self.assertEqual(concept_image.size, (1920, 1080))
+            recipe = json.loads(
+                (self.root / "output" / entry["editable_source"]).read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(recipe["master_dimensions"], [1920, 1080])
+            self.assertEqual(recipe["platform_dimensions"], [1280, 720])
         with Image.open(result["outputs"]["contact_sheet"]) as contact:
             self.assertEqual(contact.size, (1200, 225))
         with Image.open(result["outputs"]["mobile_preview"]) as preview:

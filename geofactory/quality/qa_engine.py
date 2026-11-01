@@ -424,7 +424,8 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
                 if not isinstance(winner_scores.get(name), (int, float)):
                     raise ValueError(f"Winner score {name} is missing or invalid.")
             for filename in (
-                "thumbnail_contact_sheet.jpg", "thumbnail_mobile_preview.jpg",
+                "thumbnail_master.jpg", "thumbnail_contact_sheet.jpg",
+                "thumbnail_mobile_preview.jpg",
             ):
                 if not (package / filename).is_file():
                     raise ValueError(f"Missing thumbnail review artifact: {filename}.")
@@ -441,6 +442,7 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             from PIL import Image
 
             expected_dimensions = {
+                "thumbnail_master.jpg": (1920, 1080),
                 "thumbnail_contact_sheet.jpg": (1200, 225),
                 "thumbnail_mobile_preview.jpg": (160, 90),
             }
@@ -450,11 +452,47 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
                         raise ValueError(
                             f"{filename} must be {dimensions[0]}x{dimensions[1]}."
                         )
+            for entry in concepts:
+                measurements = entry.get("measurements")
+                style_checks = entry.get("style_checks")
+                concept_scores = entry.get("scores")
+                if not isinstance(measurements, dict) or not isinstance(style_checks, dict):
+                    raise ValueError("Each concept needs measured style metrics and checks.")
+                if not isinstance(concept_scores, dict):
+                    raise ValueError("Each concept needs a complete score record.")
+                saturation = measurements.get("palette_mean_saturation")
+                headline_coverage = measurements.get("headline_block_coverage_fraction")
+                arrow_count = measurements.get("arrow_count")
+                if (
+                    not isinstance(saturation, (int, float))
+                    or not 0 <= saturation <= 1
+                    or not isinstance(headline_coverage, (int, float))
+                    or not 0 <= headline_coverage <= 1
+                    or not isinstance(arrow_count, int)
+                    or arrow_count < 0
+                    or not isinstance(measurements.get("layout_variety_pass"), bool)
+                    or not isinstance(
+                        measurements.get("bottom_right_duration_area_clear"), bool
+                    )
+                ):
+                    raise ValueError("Concept style measurements are invalid.")
+                if (
+                    not style_checks
+                    or any(not isinstance(value, bool) for value in style_checks.values())
+                    or concept_scores.get("style_match")
+                    != round(100 * sum(style_checks.values()) / len(style_checks))
+                ):
+                    raise ValueError("Concept style-match score does not match its rubric.")
+                concept_image_path = (package / entry["image"]).resolve(strict=True)
+                with Image.open(concept_image_path) as concept_image:
+                    if concept_image.size != (1920, 1080):
+                        raise ValueError("Each editable thumbnail concept must be 1920x1080.")
             if winner_scores["style_match"] < 70:
                 checks.append(_check(
                     "critical", "thumbnail_style_match_low",
-                    "Improve map hero, highlighted region, arrow, saturation, 2-5 word headline, "
-                    "clear bottom-right badge area, and 160px legibility before approval.",
+                    "Improve the map hero, highlighted region, arrow/marker, saturation, headline "
+                    "coverage, layout variety, 2-5 word text, bottom-right badge clearance, and "
+                    "160px legibility before approval.",
                 ))
             if winner_scores["mobile_readability"] < 70:
                 checks.append(_check(

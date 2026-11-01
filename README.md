@@ -173,7 +173,7 @@ python3 -m geofactory music-add JOB_ID --file path/to/track.mp3 \
 
 FFprobe validates the audio stream and the media ledger records the licence and credit. A render mixes one registered track at volume `0.1` (-20 dB) under narration with a limiter. With no registered track, narration-only rendering remains the default. Inspect the provider's current licence and the specific track's restrictions before use; CLI registration is an owner attestation, not a legal determination.
 
-Thumbnails are composed with Pillow as 1280×720 JPEGs using a hero still (or an extracted frame from an MP4), a dark gradient overlay, and bold fitted title text. `thumbnail.svg` is retained as a vector companion. Use the existing `render` command after registering stock clips and optional music; technical QA continues to block approval for unreviewed claims.
+The photo-backed fallback thumbnail is a 1280×720 JPEG using a hero still (or an extracted frame from an MP4), dark gradient, and bold fitted title. The map-first thumbnail engine renders three native 1920×1080 concepts and saves the selected master as `thumbnail_master.jpg`, then downsamples it to the 1280×720 `thumbnail.jpg` upload image. Editable JSON recipes, a contact sheet, and 160×90 mobile preview accompany both. `thumbnail.svg` is retained as a vector companion. Use the existing `render` command after registering stock clips and optional music; technical QA continues to block approval for unreviewed claims.
 
 ## Natural Earth maps and concept-scored thumbnails
 
@@ -193,7 +193,7 @@ Or build just the thumbnail concepts:
 python3 -m geofactory thumbnail-build JOB_ID --country JPN --headline "TOKYO RISING"
 ```
 
-`map-build` renders reusable PNG frames and an MP4 segment, then records it in `map_scenes.json`; `render JOB_ID` verifies and inserts those scenes before other registered visuals. It also creates three differently composed 1280×720 map-first concepts, JSON edit recipes, `thumbnail_contact_sheet.jpg`, `thumbnail_mobile_preview.jpg` (160×90), `thumbnail_scores.json`, and the selected `thumbnail.jpg`. QA checks the concept count, score fields, style-match and mobile-readability heuristics, and preview artifacts, with critical feedback on weak results. These scores are not predictions of views or a substitute for checking the map, headline, and 160px preview.
+`map-build` renders reusable PNG frames and an MP4 segment, then records it in `map_scenes.json`; `render JOB_ID` verifies and inserts those scenes before other registered visuals. It also creates three differently composed native 1920×1080 map-first concepts, JSON edit recipes, `thumbnail_master.jpg`, a 1280×720 selected `thumbnail.jpg`, `thumbnail_contact_sheet.jpg`, `thumbnail_mobile_preview.jpg` (160×90), and `thumbnail_scores.json`. QA checks both thumbnail dimensions, the concept count, score fields, style-match and mobile-readability heuristics, and preview artifacts, with critical feedback on weak results. These scores are not predictions of views or a substitute for checking the map, headline, and 160px preview.
 
 The current map layer is intentionally limited to Natural Earth country polygons. Historical borders, population density, migration/trade, rivers, terrain, and climate require their own verified, versioned data sources before they can be depicted. Animated scenes currently join with hard cuts.
 

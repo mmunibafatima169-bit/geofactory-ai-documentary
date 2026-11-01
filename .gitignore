@@ -21,6 +21,7 @@ logs/
 cache/
 models/
 voices/
+reference/
 *.log
 story.txt
 story.mp3

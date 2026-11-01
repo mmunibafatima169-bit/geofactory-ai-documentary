@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from geofactory.media.map_animation_engine import (
     DATASET_LICENSE,
@@ -34,6 +34,11 @@ STOP_WORDS = {
     "when", "where", "why", "with",
 }
 
+MASTER_WIDTH = 1920
+MASTER_HEIGHT = 1080
+RENDER_SCALE = MASTER_WIDTH / THUMBNAIL_WIDTH
+REFERENCE_SATURATION_MEDIAN = 0.519
+
 CONCEPTS: tuple[dict[str, Any], ...] = (
     {
         "id": "coastal-signal",
@@ -50,7 +55,7 @@ CONCEPTS: tuple[dict[str, Any], ...] = (
     {
         "id": "terrain-route",
         "palette": {
-            "ocean": (192, 177, 143), "land": (229, 208, 164),
+            "ocean": (30, 95, 116), "land": (181, 142, 99),
             "highlight": (47, 193, 95), "arrow": (255, 255, 248),
             "accent": (255, 207, 45),
         },
@@ -158,7 +163,10 @@ def _draw_map(
                     ]
                     if len(hole) >= 3:
                         draw.polygon(hole, fill=palette["ocean"])
-                draw.line(points + [points[0]], fill=outline, width=3 if highlighted else 2)
+                draw.line(
+                    points + [points[0]], fill=outline,
+                    width=round((3 if highlighted else 2) * RENDER_SCALE),
+                )
     return target_pixel
 
 
@@ -168,24 +176,25 @@ def _draw_arrow(
     end: tuple[int, int],
     color: tuple[int, int, int],
     style: str,
+    scale: float,
 ) -> None:
     x1, y1 = start
     x2, y2 = end
     if style == "curved-pointer":
         points = [
             (x1, y1),
-            (round((x1 + x2) * 0.55), round(y1 - 65)),
+            (round((x1 + x2) * 0.55), round(y1 - 65 * scale)),
             (x2, y2),
         ]
     elif style == "diagonal-pointer":
         points = [(x1, y1), (round((x1 + x2) * 0.5), y1), (x2, y2)]
     else:
         points = [start, end]
-    draw.line(points, fill=(0, 0, 0), width=22, joint="curve")
-    draw.line(points, fill=color, width=13, joint="curve")
+    draw.line(points, fill=(0, 0, 0), width=round(22 * scale), joint="curve")
+    draw.line(points, fill=color, width=round(13 * scale), joint="curve")
     a, b = points[-2], points[-1]
     angle = math.atan2(b[1] - a[1], b[0] - a[0])
-    size = 38
+    size = 38 * scale
     wings = [
         (round(b[0] - size * math.cos(angle - 0.5)),
          round(b[1] - size * math.sin(angle - 0.5))),
@@ -207,17 +216,31 @@ def _contrast_ratio(foreground: tuple[int, int, int], background: tuple[int, int
 
 
 def _score_concept(
-    headline: str, topic: str, font_size: int, country_found: bool
+    headline: str,
+    topic: str,
+    font_size: int,
+    country_found: bool,
+    scale: float,
+    headline_block_coverage: float,
+    saturation: float,
+    arrow_count: int,
+    layout_variety: bool,
+    badge_area_clear: bool,
 ) -> dict[str, Any]:
     words = headline.split()
-    readable = len(words) <= 5 and font_size >= 58
+    normalized_font_size = font_size / scale
+    readable = len(words) <= 5 and normalized_font_size >= 58
     style_checks = {
         "map_hero_present": True,
         "highlighted_region_present": country_found,
-        "pointer_arrow_present": True,
-        "high_saturation_present": True,
+        "arrow_or_marker_present": arrow_count > 0,
+        "high_saturation_palette": 0.40 <= saturation <= 0.82,
+        "headline_block_coverage_in_design_range": (
+            0.05 <= headline_block_coverage <= 0.23
+        ),
         "short_bold_text": 2 <= len(words) <= 5,
-        "bottom_right_duration_area_clear": True,
+        "layout_variety_present": layout_variety,
+        "bottom_right_duration_area_clear": badge_area_clear,
         "mobile_text_size_heuristic_pass": readable,
     }
     topic_terms = {
@@ -234,7 +257,7 @@ def _score_concept(
     scores = {
         "mobile_readability": 100 if readable else 55,
         "contrast": min(100, round(contrast * 10)),
-        "text_size": min(100, round(font_size / 0.78)),
+        "text_size": min(100, round(normalized_font_size / 0.78)),
         "style_match": round(100 * sum(style_checks.values()) / len(style_checks)),
         "geographic_accuracy": 100 if country_found else 0,
         "title_relevance": relevance,
@@ -247,7 +270,19 @@ def _score_concept(
         + scores["geographic_accuracy"] * 0.20
         + scores["title_relevance"] * 0.15
     )
-    return {"scores": scores, "style_checks": style_checks}
+    return {
+        "scores": scores,
+        "style_checks": style_checks,
+        "measurements": {
+            "palette_mean_saturation": round(saturation, 3),
+            "headline_block_coverage_fraction": round(headline_block_coverage, 3),
+            "headline_block_coverage_design_range": [0.05, 0.23],
+            "reference_median_saturation": REFERENCE_SATURATION_MEDIAN,
+            "arrow_count": arrow_count,
+            "layout_variety_pass": layout_variety,
+            "bottom_right_duration_area_clear": badge_area_clear,
+        },
+    }
 
 
 def _render_concept(
@@ -258,22 +293,26 @@ def _render_concept(
     concept: dict[str, Any],
     output_path: Path,
     font_path: Path,
+    layout_variety: bool,
 ) -> tuple[dict[str, Any], int]:
     palette = concept["palette"]
-    image = Image.new("RGB", (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), palette["ocean"])
+    scale = RENDER_SCALE
+    width, height = MASTER_WIDTH, MASTER_HEIGHT
+    image = Image.new("RGB", (width, height), palette["ocean"])
     target_point = _draw_map(
         image, collection, target, palette, concept["zoom"], concept["map_anchor"]
     )
     draw = ImageDraw.Draw(image)
     _draw_arrow(
         draw,
-        (THUMBNAIL_WIDTH - 140, 180),
-        (max(380, min(THUMBNAIL_WIDTH - 220, target_point[0])),
-         max(120, min(THUMBNAIL_HEIGHT - 150, target_point[1]))),
+        (width - round(140 * scale), round(180 * scale)),
+        (max(round(380 * scale), min(width - round(220 * scale), target_point[0])),
+         max(round(120 * scale), min(height - round(150 * scale), target_point[1]))),
         palette["arrow"],
         concept["arrow_style"],
+        scale,
     )
-    marker_radius = 19
+    marker_radius = round(19 * scale)
     draw.ellipse(
         (
             target_point[0] - marker_radius, target_point[1] - marker_radius,
@@ -281,13 +320,14 @@ def _render_concept(
         ),
         fill=palette["accent"],
         outline=(255, 255, 255),
-        width=5,
+        width=round(5 * scale),
     )
     draw.ellipse(
-        (THUMBNAIL_WIDTH - 136, 176, THUMBNAIL_WIDTH - 112, 200),
+        (width - round(136 * scale), round(176 * scale),
+         width - round(112 * scale), round(200 * scale)),
         fill=(235, 45, 43),
         outline=(255, 255, 255),
-        width=3,
+        width=round(3 * scale),
     )
     mask = Image.new("L", (64, 36))
     mask_pixels = mask.load()
@@ -305,44 +345,83 @@ def _render_concept(
     image = Image.alpha_composite(image.convert("RGBA"), overlay).convert("RGB")
     draw = ImageDraw.Draw(image)
     words = headline.split()
-    headline_size = 94 if len(headline) < 20 else 78
+    headline_size = round((94 if len(headline) < 20 else 78) * scale)
     font = _font(font_path, headline_size)
     lines = [" ".join(words[: max(1, (len(words) + 1) // 2)]),
              " ".join(words[max(1, (len(words) + 1) // 2):])]
     if not lines[1]:
         lines = [headline, ""]
-    x, y = concept["headline_anchor"]
-    max_width = 770 if concept["id"] != "terrain-route" else 690
+    x, y = (round(value * scale) for value in concept["headline_anchor"])
+    max_width = round((770 if concept["id"] != "terrain-route" else 690) * scale)
+    headline_area = 0
+    headline_boxes: list[tuple[int, int, int, int]] = []
     for line in lines:
         if not line:
             continue
-        while draw.textbbox((0, 0), line, font=font, stroke_width=5)[2] > max_width:
+        while draw.textbbox(
+            (0, 0), line, font=font, stroke_width=round(5 * scale)
+        )[2] > max_width:
             headline_size -= 2
-            if headline_size < 54:
-                raise ThumbnailEngineError("Headline cannot fit legibly at 1280x720.")
+            if headline_size < round(54 * scale):
+                raise ThumbnailEngineError(
+                    "Headline cannot fit legibly at 1920x1080."
+                )
             font = _font(font_path, headline_size)
-        box = draw.textbbox((x, y), line, font=font, stroke_width=5)
+        box = draw.textbbox(
+            (x, y), line, font=font, stroke_width=round(5 * scale)
+        )
+        headline_box = (
+            box[0] - round(18 * scale), box[1] - round(12 * scale),
+            box[2] + round(24 * scale), box[3] + round(18 * scale),
+        )
+        headline_boxes.append(headline_box)
+        headline_area += max(0, headline_box[2] - headline_box[0]) * max(
+            0, headline_box[3] - headline_box[1]
+        )
         draw.rounded_rectangle(
-            (box[0] - 18, box[1] - 12, box[2] + 24, box[3] + 18),
-            radius=12,
+            headline_box,
+            radius=round(12 * scale),
             fill=(3, 7, 12),
         )
         key_word = words[-1]
         draw.text(
             (x, y), line, font=font,
             fill=palette["accent"] if key_word in line.split() else (255, 255, 255),
-            stroke_width=5, stroke_fill=(0, 0, 0),
+            stroke_width=round(5 * scale), stroke_fill=(0, 0, 0),
         )
-        y += headline_size + 22
+        y += headline_size + round(22 * scale)
     qualification = "Natural Earth boundaries; disputed status may differ"
-    small_font = _font(font_path, 19)
+    small_font = _font(font_path, round(19 * scale))
     draw.rounded_rectangle(
-        (48, 666, 720, 704), radius=8, fill=(3, 7, 12, 225)
+        tuple(round(value * scale) for value in (48, 666, 720, 704)),
+        radius=round(8 * scale), fill=(3, 7, 12, 225)
     )
-    draw.text((58, 674), qualification, font=small_font, fill=(255, 255, 255))
+    draw.text(
+        (round(58 * scale), round(674 * scale)), qualification,
+        font=small_font, fill=(255, 255, 255),
+    )
+    badge_area = (
+        width - round(200 * scale), height - round(112 * scale), width, height
+    )
+    target_box = (
+        target_point[0] - marker_radius, target_point[1] - marker_radius,
+        target_point[0] + marker_radius, target_point[1] + marker_radius,
+    )
+    badge_area_clear = not any(
+        box[0] < badge_area[2] and box[2] > badge_area[0]
+        and box[1] < badge_area[3] and box[3] > badge_area[1]
+        for box in [*headline_boxes, target_box]
+    )
+    headline_block_coverage = headline_area / (width * height)
+    saturation = ImageStat.Stat(image.convert("HSV")).mean[1] / 255
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(output_path, format="PNG", optimize=True)
-    score = _score_concept(headline, topic, headline_size, True)
+    score = _score_concept(
+        headline, topic, headline_size, True, scale,
+        headline_block_coverage, saturation,
+        arrow_count=1, layout_variety=layout_variety,
+        badge_area_clear=badge_area_clear,
+    )
     return score, headline_size
 
 
@@ -368,11 +447,22 @@ def generate_thumbnail_concepts(
     font_path = _find_bold_font()
     concepts_dir = output_dir / "thumbnail_concepts"
     concepts_dir.mkdir(parents=True, exist_ok=True)
+    layout_signatures = {
+        (
+            concept["map_anchor"],
+            tuple(concept["headline_anchor"]),
+            concept["arrow_style"],
+            tuple(sorted(concept["palette"].items())),
+        )
+        for concept in CONCEPTS
+    }
+    layouts_are_distinct = len(layout_signatures) == len(CONCEPTS)
     entries: list[dict[str, Any]] = []
     for concept in CONCEPTS:
         image_path = concepts_dir / f"{concept['id']}.png"
         score, font_size = _render_concept(
-            topic, short_headline, target, collection, concept, image_path, font_path
+            topic, short_headline, target, collection, concept, image_path,
+            font_path, layouts_are_distinct,
         )
         recipe = {
             "renderer": "GeoFactory thumbnail_engine",
@@ -381,6 +471,8 @@ def generate_thumbnail_concepts(
             "country_iso_a3": country_iso_a3.upper(),
             "country_name": country_name,
             "headline": short_headline,
+            "master_dimensions": [MASTER_WIDTH, MASTER_HEIGHT],
+            "platform_dimensions": [THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT],
             "dataset_name": dataset["dataset_name"],
             "dataset_version": dataset["dataset_version"],
             "dataset_licence": dataset["licence"],
@@ -404,10 +496,16 @@ def generate_thumbnail_concepts(
         })
     winner = max(entries, key=lambda entry: (entry["scores"]["overall"], entry["concept_id"]))
     winner_path = output_dir / "thumbnail.jpg"
+    master_path = output_dir / "thumbnail_master.jpg"
     winner_image = output_dir / winner["image"]
     with Image.open(winner_image) as opened:
-        opened.convert("RGB").save(winner_path, "JPEG", quality=94, optimize=True)
-        mobile = opened.convert("RGB").resize((160, 90), Image.Resampling.LANCZOS)
+        master = opened.convert("RGB")
+        master.save(master_path, "JPEG", quality=95, optimize=True)
+        platform_image = master.resize(
+            (THUMBNAIL_WIDTH, THUMBNAIL_HEIGHT), Image.Resampling.LANCZOS
+        )
+        platform_image.save(winner_path, "JPEG", quality=94, optimize=True)
+        mobile = platform_image.resize((160, 90), Image.Resampling.LANCZOS)
         mobile.save(output_dir / "thumbnail_mobile_preview.jpg", "JPEG", quality=90)
     contact = Image.new("RGB", (1200, 225), (16, 20, 25))
     for index, entry in enumerate(entries):
@@ -437,6 +535,7 @@ def generate_thumbnail_concepts(
         "concepts": entries,
         "outputs": {
             "winner": str(winner_path),
+            "master": str(master_path),
             "contact_sheet": str(output_dir / "thumbnail_contact_sheet.jpg"),
             "mobile_preview": str(output_dir / "thumbnail_mobile_preview.jpg"),
         },

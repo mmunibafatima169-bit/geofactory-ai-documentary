@@ -175,7 +175,7 @@ def render_video(
                 f"x='iw/2-(iw/zoom/2)+sin(on/250)*8':"
                 f"y='ih/2-(ih/zoom/2)+cos(on/300)*5':"
                 f"d=1:s={config.width}x{config.height}:fps={FRAME_RATE},"
-                f"trim=end_frame={frame_count},setpts=PTS-STARTPTS,"
+                f"trim=end_frame={frame_count},setpts=PTS-STARTPTS,setsar=1,"
                 f"format=yuv420p[v{index}]"
             )
     narration_index = len(timeline)

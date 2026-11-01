@@ -19,7 +19,8 @@ from geofactory.quality.qa_engine import assert_approvable, run_qa
 
 SAFE_ARTIFACTS = {
     "final.mp4", "script.md", "narration.txt", "narration.wav", "subtitles.srt",
-    "thumbnail.svg", "thumbnail.png", "thumbnail.jpg", "metadata.json", "source_ledger.json",
+    "thumbnail.svg", "thumbnail.png", "thumbnail.jpg", "thumbnail_master.jpg",
+    "metadata.json", "source_ledger.json",
     "thumbnail_scores.json", "thumbnail_contact_sheet.jpg",
     "thumbnail_mobile_preview.jpg", "map_scenes.json",
     "asset_ledger.json", "attribution.md", "qa_report.md", "qa_report.json",
