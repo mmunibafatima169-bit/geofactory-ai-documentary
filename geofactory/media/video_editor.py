@@ -11,6 +11,7 @@ from pathlib import Path
 
 from geofactory.core.config import FactoryConfig
 from geofactory.media.asset_manager import ALLOWED_MEDIA_LICENSES, sha256_file
+from geofactory.media.map_animation_engine import MapAnimationError, validate_map_scene
 from geofactory.media.tts_engine import audio_duration_seconds
 
 FRAME_RATE = 30
@@ -27,6 +28,7 @@ def render_video(
     destination: Path,
     asset_records: list[dict[str, object]],
     subtitles: Path | None = None,
+    scene_videos: list[Path] | None = None,
 ) -> Path:
     free_bytes = shutil.disk_usage(config.root).free
     required_bytes = int(config.minimum_free_disk_gb * 1024 ** 3)
@@ -38,8 +40,9 @@ def render_video(
     ffmpeg = shutil.which(config.ffmpeg)
     if not ffmpeg:
         raise RenderError(f"FFmpeg executable not found: {config.ffmpeg}")
-    if not images:
-        raise RenderError("At least one rights-cleared visual asset is required.")
+    scene_videos = scene_videos or []
+    if not images and not scene_videos:
+        raise RenderError("At least one licensed visual asset or verified map scene is required.")
     if not narration.is_file() or narration.stat().st_size == 0:
         raise RenderError("A non-empty narration WAV file is required.")
     subtitles = subtitles or destination.with_name("subtitles.srt")
@@ -52,6 +55,24 @@ def render_video(
     image_records: list[dict[str, object]] = []
     video_records: list[dict[str, object]] = []
     music_records: list[dict[str, object]] = []
+    map_records: list[dict[str, object]] = []
+    for path in scene_videos:
+        try:
+            resolved = path.resolve(strict=True)
+            map_manifest = validate_map_scene(resolved)
+        except (OSError, MapAnimationError) as exc:
+            raise RenderError(f"Generated map scene failed validation: {exc}") from exc
+        map_records.append({
+            "path": str(resolved),
+            "media_type": "video",
+            "licence": map_manifest["licence"],
+            "commercial_use": True,
+            "attribution": (
+                f"Made with {map_manifest['dataset_name']} "
+                f"{map_manifest['dataset_version']} ({map_manifest['licence']})"
+            ),
+            "file_sha256": map_manifest["segment_sha256"],
+        })
     for path in images:
         resolved = path.resolve(strict=True)
         record = records_by_path.get(str(resolved))
@@ -74,11 +95,11 @@ def render_video(
             raise RenderError(f"Unsupported registered media type {media_type!r}: {path}")
     if len(music_records) > 1:
         raise RenderError("Register at most one background music track per render.")
-    if not video_records and not image_records:
+    if not video_records and not image_records and not map_records:
         raise RenderError("At least one licensed video clip or still image is required.")
     video_durations: list[tuple[dict[str, object], float]] = []
-    if video_records:
-        for record in video_records:
+    if map_records or video_records:
+        for record in [*map_records, *video_records]:
             if Path(str(record["path"])).suffix.lower() != ".mp4":
                 raise RenderError("Registered stock video clips must use the validated MP4 format.")
             probe = probe_video(config, Path(str(record["path"])))

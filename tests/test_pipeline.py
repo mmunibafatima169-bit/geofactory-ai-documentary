@@ -51,6 +51,12 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue((package / "source_ledger.json").is_file())
         self.assertTrue((package / "asset_ledger.json").is_file())
         self.assertTrue((package / "metadata.json").is_file())
+        metadata = json.loads((package / "metadata.json").read_text(encoding="utf-8"))
+        self.assertEqual(metadata["channel_name"], "CHANNEL_NAME_TBD")
+        self.assertEqual(metadata["credits"], ["Produced by CHANNEL_NAME_TBD"])
+        self.assertIn("Production credit: CHANNEL_NAME_TBD", (
+            package / "attribution.md"
+        ).read_text(encoding="utf-8"))
         self.assertTrue((package / "qa_report.md").is_file())
         self.assertTrue(report["approval_blocked"])
         self.assertEqual(get_job(self.db, job["id"])["status"], "qa_failed")
@@ -273,6 +279,11 @@ class PipelineTests(unittest.TestCase):
             )
         self.assertEqual(groq_words, words)
         groq_generate.assert_called_once()
+        prompt = groq_generate.call_args.args[1]
+        self.assertIn("within the first", prompt)
+        self.assertIn("map, chart, or clearly sourced visual", prompt)
+        self.assertIn("do not imitate or copy any existing creator", prompt)
+        self.assertIn("disputed facts honestly", prompt)
 
     def test_documented_cli_dry_run_works_without_api_keys(self) -> None:
         config_path = self.root / "config.json"

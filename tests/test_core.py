@@ -36,6 +36,7 @@ class ConfigTests(FactoryTestCase):
     def test_config_uses_local_safe_defaults(self) -> None:
         config = load_config(self.root / "missing.json")
         self.assertEqual(config.bind_host, "127.0.0.1")
+        self.assertEqual(config.channel_name, "CHANNEL_NAME_TBD")
         self.assertFalse(config.publishing_enabled)
         self.assertTrue(config.dry_run)
 
@@ -45,6 +46,9 @@ class ConfigTests(FactoryTestCase):
         with self.assertRaises(ConfigurationError):
             load_config(path)
         path.write_text(json.dumps({"publishing_enabled": True}), encoding="utf-8")
+        with self.assertRaises(ConfigurationError):
+            load_config(path)
+        path.write_text(json.dumps({"channel_name": "\nunsafe"}), encoding="utf-8")
         with self.assertRaises(ConfigurationError):
             load_config(path)
 

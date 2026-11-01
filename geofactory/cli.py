@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shutil
 import sqlite3
 import subprocess
@@ -30,10 +31,14 @@ from geofactory.media.asset_manager import (
     search_and_download_commons, search_and_download_stock_videos,
     sha256_file, write_attribution_report,
 )
+from geofactory.media.map_animation_engine import (
+    MapSceneSpec, create_map_scene, validate_map_scene,
+)
 from geofactory.media.tts_engine import (
     audio_duration_seconds, synthesize, write_text_only_narration,
 )
 from geofactory.media.thumbnail_maker import make_thumbnail
+from geofactory.media.thumbnail_engine import generate_thumbnail_concepts
 from geofactory.media.video_editor import RenderError, render_video
 from geofactory.publishing.youtube_client import upload_approved_video
 from geofactory.quality.qa_engine import assert_approvable, run_qa, validate_srt
@@ -85,6 +90,21 @@ def build_parser() -> argparse.ArgumentParser:
     stock.add_argument("--query", required=True)
     stock.add_argument("--limit", type=int, default=5)
     stock.add_argument("--downloads", type=int, default=2)
+
+    map_build = sub.add_parser(
+        "map-build", help="Render a qualified Natural Earth country zoom and thumbnail concepts"
+    )
+    map_build.add_argument("job_id")
+    map_build.add_argument("--country", required=True, help="Three-letter ISO A3 country code")
+    map_build.add_argument("--duration", type=float, default=10.0)
+    map_build.add_argument("--title", default="")
+
+    thumbnail_build = sub.add_parser(
+        "thumbnail-build", help="Generate, score, and compare three original map-first concepts"
+    )
+    thumbnail_build.add_argument("job_id")
+    thumbnail_build.add_argument("--country", required=True, help="Three-letter ISO A3 country code")
+    thumbnail_build.add_argument("--headline", help="Original 2-5 word headline")
 
     online_demo = sub.add_parser(
         "demo-online", help="Build a real Wikipedia/Commons research package; no publish/render claim"
@@ -190,6 +210,7 @@ def _example_config() -> dict[str, Any]:
         "root": ".",
         "database_path": "data/geofactory.sqlite3",
         "output_dir": "output",
+        "channel_name": "CHANNEL_NAME_TBD",
         "bind_host": "127.0.0.1",
         "dashboard_port": 8765,
         "require_topic_approval": True,
@@ -334,6 +355,33 @@ def _validate_narration_package(package: Path, config: FactoryConfig) -> None:
         raise ValueError("Narration duration no longer matches its generation manifest.")
 
 
+def _package_map_scenes(package: Path) -> list[Path]:
+    manifest_path = package / "map_scenes.json"
+    if not manifest_path.is_file():
+        return []
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Map-scene manifest is unreadable: {exc}") from exc
+    entries = manifest.get("scenes") if isinstance(manifest, dict) else None
+    if not isinstance(entries, list):
+        raise ValueError("Map-scene manifest must contain a scenes list.")
+    scenes: list[Path] = []
+    package_root = package.resolve()
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+            raise ValueError("Map-scene entries need a relative path.")
+        candidate = package / entry["path"]
+        if candidate.is_symlink():
+            raise ValueError("Map-scene files cannot be symbolic links.")
+        path = candidate.resolve(strict=True)
+        if not path.is_relative_to(package_root):
+            raise ValueError("Map-scene paths must remain inside the job package.")
+        validate_map_scene(path)
+        scenes.append(path)
+    return scenes
+
+
 def run(args: argparse.Namespace) -> int:
     config = load_config(args.config)
     db = Database(config.database_path)
@@ -413,6 +461,82 @@ def run(args: argparse.Namespace) -> int:
             "downloaded": len(result["assets"]),
             "rejected": result["rejected"],
             "notice": "Provider stock media remains subject to each platform's current licence terms and human review.",
+        }, indent=2, ensure_ascii=False))
+    elif args.command == "map-build":
+        if not re.fullmatch(r"[A-Za-z]{3}", args.country):
+            raise ValueError("Country must be a three-letter ISO A3 code.")
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        package.mkdir(parents=True, exist_ok=True)
+        existing_scenes = _package_map_scenes(package)
+        scene_path = package / "maps" / f"{args.country.upper()}-{len(existing_scenes) + 1:02d}.mp4"
+        scene_manifest = create_map_scene(
+            config.root,
+            scene_path,
+            MapSceneSpec(
+                country_iso_a3=args.country,
+                duration_seconds=args.duration,
+                title=args.title,
+            ),
+            ffmpeg_name=config.ffmpeg,
+            width=min(1280, config.width),
+            height=min(720, config.height),
+        )
+        entries = []
+        manifest_path = package / "map_scenes.json"
+        if manifest_path.is_file():
+            saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+            entries = saved.get("scenes", []) if isinstance(saved, dict) else []
+            if not isinstance(entries, list):
+                raise ValueError("Existing map-scene manifest has an invalid scenes list.")
+        entries.append({
+            "path": str(scene_path.relative_to(package)),
+            "dataset_name": scene_manifest["dataset_name"],
+            "dataset_version": scene_manifest["dataset_version"],
+            "licence": scene_manifest["licence"],
+            "dataset_download_date": scene_manifest["dataset_download_date"],
+        })
+        manifest_path.write_text(
+            json.dumps({"scenes": entries}, indent=2) + "\n", encoding="utf-8"
+        )
+        attribution = package / "attribution.md"
+        current = attribution.read_text(encoding="utf-8") if attribution.is_file() else ""
+        map_credit = (
+            f"Made with {scene_manifest['dataset_name']} "
+            f"{scene_manifest['dataset_version']} ({scene_manifest['licence']}); "
+            f"downloaded {scene_manifest['dataset_download_date']}. "
+            f"{scene_manifest['licence_url']}"
+        )
+        if map_credit not in current:
+            attribution.write_text(
+                current.rstrip() + "\n\n## Map data\n\n" + map_credit + "\n",
+                encoding="utf-8",
+            )
+        thumbnail_result = generate_thumbnail_concepts(
+            job["topic"], args.country, package, config.root
+        )
+        print(json.dumps({
+            "scene": str(scene_path),
+            "country": scene_manifest["country_name"],
+            "dataset": {
+                "name": scene_manifest["dataset_name"],
+                "version": scene_manifest["dataset_version"],
+                "licence": scene_manifest["licence"],
+                "download_date": scene_manifest["dataset_download_date"],
+            },
+            "thumbnail_winner": thumbnail_result["winner"],
+            "thumbnail_scores": thumbnail_result["winner_scores"],
+        }, indent=2, ensure_ascii=False))
+    elif args.command == "thumbnail-build":
+        job = get_job(db, args.job_id)
+        result = generate_thumbnail_concepts(
+            job["topic"], args.country, Path(job["output_dir"]), config.root,
+            headline=args.headline,
+        )
+        print(json.dumps({
+            "winner": result["winner"],
+            "winner_scores": result["winner_scores"],
+            "outputs": result["outputs"],
         }, indent=2, ensure_ascii=False))
     elif args.command == "demo-online":
         if not 1 <= args.limit <= 10 or not 1 <= args.downloads <= 5:
@@ -550,10 +674,11 @@ def run(args: argparse.Namespace) -> int:
                 "SELECT * FROM assets WHERE job_id = ? ORDER BY retrieved_at, id", (args.job_id,)
             )]
         images = [Path(record["path"]) for record in records]
+        map_scenes = _package_map_scenes(package)
         try:
             render_video(
                 config, images, package / "narration.wav", package / "final.mp4",
-                records, package / "subtitles.srt",
+                records, package / "subtitles.srt", scene_videos=map_scenes,
             )
             hero_visual = next(
                 (
@@ -563,7 +688,15 @@ def run(args: argparse.Namespace) -> int:
                 ),
                 None,
             )
-            if hero_visual is not None:
+            if map_scenes and not (package / "thumbnail_scores.json").is_file():
+                map_manifest = validate_map_scene(map_scenes[0])
+                generate_thumbnail_concepts(
+                    job["topic"], map_manifest["scene"]["country_iso_a3"],
+                    package, config.root,
+                )
+            elif hero_visual is not None and not (
+                package / "thumbnail_scores.json"
+            ).is_file():
                 make_thumbnail(
                     job["topic"],
                     " ".join(job["topic"].split())[:48].strip(),

@@ -175,6 +175,28 @@ FFprobe validates the audio stream and the media ledger records the licence and 
 
 Thumbnails are composed with Pillow as 1280×720 JPEGs using a hero still (or an extracted frame from an MP4), a dark gradient overlay, and bold fitted title text. `thumbnail.svg` is retained as a vector companion. Use the existing `render` command after registering stock clips and optional music; technical QA continues to block approval for unreviewed claims.
 
+## Natural Earth maps and concept-scored thumbnails
+
+Set `channel_name` in local `config.json` (default: `CHANNEL_NAME_TBD`). It is recorded in package metadata and production credits only; the thumbnail engine does not add logos or channel branding.
+
+The initial map engine downloads and caches Natural Earth 1:110m Admin 0 Countries GeoJSON release 5.1.1 at `data/natural-earth/`. Natural Earth identifies its map data as public domain. The local manifest records the dataset name, version, source, licence URL, download date, and SHA-256. Generated maps are simplified country polygons with a world-to-country zoom and highlight, plus an on-screen note that Natural Earth's de-facto boundary depiction may differ from disputed status. This is not a survey-grade border source. Routes and markers can be supplied through the Python API only with explicit coordinates and recorded sources; the engine does not invent routes or data layers.
+
+Create a country map scene and three original thumbnail concepts for a job:
+
+```bash
+python3 -m geofactory map-build JOB_ID --country JPN --duration 10 --title "Japan and Tokyo"
+```
+
+Or build just the thumbnail concepts:
+
+```bash
+python3 -m geofactory thumbnail-build JOB_ID --country JPN --headline "TOKYO RISING"
+```
+
+`map-build` renders reusable PNG frames and an MP4 segment, then records it in `map_scenes.json`; `render JOB_ID` verifies and inserts those scenes before other registered visuals. It also creates three differently composed 1280×720 map-first concepts, JSON edit recipes, `thumbnail_contact_sheet.jpg`, `thumbnail_mobile_preview.jpg` (160×90), `thumbnail_scores.json`, and the selected `thumbnail.jpg`. QA checks the concept count, score fields, style-match and mobile-readability heuristics, and preview artifacts, with critical feedback on weak results. These scores are not predictions of views or a substitute for checking the map, headline, and 160px preview.
+
+The current map layer is intentionally limited to Natural Earth country polygons. Historical borders, population density, migration/trade, rivers, terrain, and climate require their own verified, versioned data sources before they can be depicted. Animated scenes currently join with hard cuts.
+
 ## Operations, backup, and recovery
 
 - `python3 -m geofactory status` shows persistent jobs; `python3 -m geofactory doctor` checks Python, memory, disk, optional tools, and database health.

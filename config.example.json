@@ -2,6 +2,7 @@
   "root": ".",
   "database_path": "data/geofactory.sqlite3",
   "output_dir": "output",
+  "channel_name": "CHANNEL_NAME_TBD",
   "bind_host": "127.0.0.1",
   "dashboard_port": 8765,
   "require_topic_approval": true,

@@ -19,6 +19,7 @@ class FactoryConfig:
     root: Path
     database_path: Path
     output_dir: Path
+    channel_name: str = "CHANNEL_NAME_TBD"
     bind_host: str = "127.0.0.1"
     dashboard_port: int = 8765
     require_topic_approval: bool = True
@@ -81,6 +82,7 @@ def load_config(path: Path | str | None = None) -> FactoryConfig:
             root=root,
             database_path=_resolve_path(root, raw.get("database_path"), "data/geofactory.sqlite3"),
             output_dir=_resolve_path(root, raw.get("output_dir"), "output"),
+            channel_name=_channel_name(raw.get("channel_name", "CHANNEL_NAME_TBD")),
             bind_host=str(raw.get("bind_host", "127.0.0.1")),
             dashboard_port=int(raw.get("dashboard_port", 8765)),
             require_topic_approval=_as_bool(raw.get("require_topic_approval", True)),
@@ -126,7 +128,19 @@ def _as_bool(value: Any) -> bool:
     raise ValueError(f"Expected a boolean, got {value!r}.")
 
 
+def _channel_name(value: Any) -> str:
+    if not isinstance(value, str):
+        raise ConfigurationError("channel_name must be a string.")
+    if any(ord(char) < 32 for char in value):
+        raise ConfigurationError("channel_name cannot contain control characters.")
+    return value.strip()
+
+
 def validate_config(cfg: FactoryConfig) -> None:
+    if not cfg.channel_name or len(cfg.channel_name) > 100:
+        raise ConfigurationError("channel_name must contain 1-100 characters.")
+    if any(ord(char) < 32 for char in cfg.channel_name):
+        raise ConfigurationError("channel_name cannot contain control characters.")
     if not 1024 <= cfg.dashboard_port <= 65535:
         raise ConfigurationError("dashboard_port must be between 1024 and 65535.")
     if cfg.bind_host not in {"127.0.0.1", "localhost", "::1"}:

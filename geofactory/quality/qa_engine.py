@@ -13,6 +13,7 @@ from typing import Any
 from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
 from geofactory.media.asset_manager import ALLOWED_MEDIA_LICENSES, sha256_file
+from geofactory.media.map_animation_engine import MapAnimationError, validate_map_scene
 from geofactory.media.video_editor import probe_video
 from geofactory.media.tts_engine import audio_duration_seconds
 
@@ -295,11 +296,53 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             or record.get("media_type", "image") != asset["media_type"]
         ):
             checks.append(_check("critical", "asset_ledger_mismatch", f"Asset ledger entry {asset['id']} differs from its persisted record."))
-    if not assets:
-        checks.append(_check("critical", "no_rights_cleared_visuals", "No rights-cleared visual assets are registered."))
-    elif not any(asset["media_type"] in {"image", "video"} for asset in assets):
-        checks.append(_check("critical", "no_rights_cleared_visuals", "No rights-cleared visual assets are registered."))
     attribution_path = package / "attribution.md"
+    has_map_scene = False
+    map_manifest_path = package / "map_scenes.json"
+    if map_manifest_path.is_file():
+        try:
+            map_manifest = json.loads(map_manifest_path.read_text(encoding="utf-8"))
+            scene_entries = map_manifest.get("scenes") if isinstance(map_manifest, dict) else None
+            if not isinstance(scene_entries, list) or not scene_entries:
+                raise ValueError("Map-scene manifest must contain at least one scene.")
+            for entry in scene_entries:
+                if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
+                    raise ValueError("Each map scene needs a relative path.")
+                scene_candidate = package / entry["path"]
+                if scene_candidate.is_symlink():
+                    raise ValueError("Map scene files cannot be symbolic links.")
+                scene_path = scene_candidate.resolve(strict=True)
+                if not scene_path.is_relative_to(package.resolve()):
+                    raise ValueError("Map scene path is outside the job package.")
+                scene_data = validate_map_scene(scene_path)
+                has_map_scene = True
+                attribution = (
+                    f"Made with {scene_data['dataset_name']} "
+                    f"{scene_data['dataset_version']} ({scene_data['licence']})"
+                )
+                if not attribution_path.is_file() or attribution not in attribution_path.read_text(
+                    encoding="utf-8"
+                ):
+                    checks.append(_check(
+                        "critical", "map_attribution_missing",
+                        f"Add this dataset credit to attribution.md: {attribution}.",
+                    ))
+            checks.append(_check(
+                "info", "map_scenes_valid",
+                "Generated map scenes have verified segment hashes and Natural Earth dataset metadata.",
+            ))
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError, MapAnimationError) as exc:
+            checks.append(_check(
+                "critical", "map_scene_invalid",
+                f"Map scene or dataset manifest is invalid: {exc}",
+            ))
+    if not assets and not has_map_scene:
+        checks.append(_check("critical", "no_rights_cleared_visuals", "No rights-cleared visual assets are registered."))
+    elif (
+        not any(asset["media_type"] in {"image", "video"} for asset in assets)
+        and not has_map_scene
+    ):
+        checks.append(_check("critical", "no_rights_cleared_visuals", "No rights-cleared visual assets are registered."))
     if assets and not attribution_path.is_file():
         checks.append(_check("critical", "missing_attribution_report", "Asset attribution report is missing."))
     elif assets:
@@ -308,10 +351,13 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
             if asset["attribution"] not in attribution_text:
                 checks.append(_check("critical", "asset_attribution_missing", f"Attribution for asset {asset['id']} is missing."))
 
-    for required in (
-        "script.md", "metadata.json", "thumbnail.svg", "thumbnail.jpg",
+    required_package_files = [
+        "script.md", "metadata.json", "thumbnail.jpg",
         "source_ledger.json", "asset_ledger.json",
-    ):
+    ]
+    if not (package / "thumbnail_scores.json").is_file():
+        required_package_files.append("thumbnail.svg")
+    for required in required_package_files:
         if not (package / required).is_file():
             checks.append(_check("critical", "missing_package_file", f"Required package file is missing: {required}."))
     thumbnail_path = package / "thumbnail.jpg"
@@ -344,6 +390,107 @@ def run_qa(db: Database, job_id: str, config: FactoryConfig) -> dict[str, Any]:
                 checks.append(_check("info", "thumbnail_valid", "1280x720 JPEG thumbnail is readable."))
         except (OSError, RuntimeError, json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
             checks.append(_check("critical", "thumbnail_invalid", f"Thumbnail validation failed: {exc}"))
+    thumbnail_scores_path = package / "thumbnail_scores.json"
+    if thumbnail_scores_path.is_file():
+        try:
+            thumbnail_scores = json.loads(thumbnail_scores_path.read_text(encoding="utf-8"))
+            concepts = thumbnail_scores.get("concepts")
+            winner_scores = thumbnail_scores.get("winner_scores")
+            if not isinstance(concepts, list) or len(concepts) < 3:
+                raise ValueError("Generate at least three distinct thumbnail concepts.")
+            if not isinstance(winner_scores, dict):
+                raise ValueError("Record winner scores for all required dimensions.")
+            if not isinstance(thumbnail_scores.get("winner"), str):
+                raise ValueError("Record the selected thumbnail concept.")
+            if len({
+                entry.get("concept_id")
+                for entry in concepts if isinstance(entry, dict)
+            }) < 3:
+                raise ValueError("The three thumbnail concepts must be distinct.")
+            selected = next(
+                (
+                    entry for entry in concepts
+                    if isinstance(entry, dict)
+                    and entry.get("concept_id") == thumbnail_scores["winner"]
+                ),
+                None,
+            )
+            if selected is None or selected.get("scores") != winner_scores:
+                raise ValueError("Selected concept and winner score record do not match.")
+            for name in (
+                "mobile_readability", "contrast", "text_size", "style_match",
+                "geographic_accuracy", "title_relevance",
+            ):
+                if not isinstance(winner_scores.get(name), (int, float)):
+                    raise ValueError(f"Winner score {name} is missing or invalid.")
+            for filename in (
+                "thumbnail_contact_sheet.jpg", "thumbnail_mobile_preview.jpg",
+            ):
+                if not (package / filename).is_file():
+                    raise ValueError(f"Missing thumbnail review artifact: {filename}.")
+            for entry in concepts:
+                if not isinstance(entry, dict):
+                    raise ValueError("Each thumbnail concept score must be an object.")
+                for field in ("image", "editable_source"):
+                    relative = entry.get(field)
+                    if not isinstance(relative, str):
+                        raise ValueError(f"Each concept needs a relative {field} path.")
+                    artifact = (package / relative).resolve(strict=True)
+                    if not artifact.is_relative_to(package.resolve()) or not artifact.is_file():
+                        raise ValueError(f"Concept {field} is outside or missing from the package.")
+            from PIL import Image
+
+            expected_dimensions = {
+                "thumbnail_contact_sheet.jpg": (1200, 225),
+                "thumbnail_mobile_preview.jpg": (160, 90),
+            }
+            for filename, dimensions in expected_dimensions.items():
+                with Image.open(package / filename) as preview:
+                    if preview.size != dimensions:
+                        raise ValueError(
+                            f"{filename} must be {dimensions[0]}x{dimensions[1]}."
+                        )
+            if winner_scores["style_match"] < 70:
+                checks.append(_check(
+                    "critical", "thumbnail_style_match_low",
+                    "Improve map hero, highlighted region, arrow, saturation, 2-5 word headline, "
+                    "clear bottom-right badge area, and 160px legibility before approval.",
+                ))
+            if winner_scores["mobile_readability"] < 70:
+                checks.append(_check(
+                    "critical", "thumbnail_mobile_readability_low",
+                    "Shorten the headline or increase its size/contrast; inspect the 160px preview.",
+                ))
+            for key, threshold, code, improvement in (
+                (
+                    "contrast", 45, "thumbnail_contrast_low",
+                    "Increase the headline/background contrast and inspect the mobile preview.",
+                ),
+                (
+                    "text_size", 60, "thumbnail_text_too_small",
+                    "Increase the headline font size or reduce the headline to 2-5 short words.",
+                ),
+                (
+                    "geographic_accuracy", 80, "thumbnail_geography_unverified",
+                    "Choose a country present in the recorded dataset and verify the map crop and boundaries.",
+                ),
+                (
+                    "title_relevance", 40, "thumbnail_title_relevance_low",
+                    "Use a concise headline that clearly matches the documentary topic and title.",
+                ),
+            ):
+                if winner_scores[key] < threshold:
+                    checks.append(_check("critical", code, improvement))
+            checks.append(_check(
+                "info", "thumbnail_concepts_scored",
+                f"{len(concepts)} concepts were scored; review the contact sheet and mobile preview. "
+                "Scores are heuristic and do not predict views.",
+            ))
+        except (ImportError, OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+            checks.append(_check(
+                "critical", "thumbnail_scores_invalid",
+                f"Thumbnail concept scoring package needs correction: {exc}",
+            ))
     if (package / "metadata.json").is_file():
         try:
             metadata = json.loads((package / "metadata.json").read_text(encoding="utf-8"))

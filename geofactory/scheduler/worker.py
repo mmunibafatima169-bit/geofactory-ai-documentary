@@ -48,6 +48,8 @@ def process_offline_job(db: Database, config: FactoryConfig, job_id: str) -> dic
     )
     title = f"Geography documentary draft: {job['topic']}"
     metadata = {
+        "channel_name": config.channel_name,
+        "credits": [f"Produced by {config.channel_name}"],
         "title": title,
         "title_candidates": [title, f"The geography behind: {job['topic']}"],
         "description": (
@@ -71,7 +73,10 @@ def process_offline_job(db: Database, config: FactoryConfig, job_id: str) -> dic
     make_thumbnail(job["topic"], short_text, package / "thumbnail.jpg", config)
     _write_text(
         package / "attribution.md",
-        "# Visual attribution\n\nNo external assets are included in this demo package.\n",
+        (
+            "# Visual attribution\n\nNo external assets are included in this demo package.\n\n"
+            f"Production credit: {config.channel_name}\n"
+        ),
     )
     (package / "source_ledger.json").touch(exist_ok=True)
     transition_job(db, job_id, "awaiting_review", "Draft package prepared for review.")
