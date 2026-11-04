@@ -297,7 +297,13 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(demo.returncode, 0, demo.stderr)
         self.assertIn("critical QA failures", demo.stdout)
         config = json.loads(config_path.read_text(encoding="utf-8"))
-        package_root = Path(config["root"]).resolve() / config["output_dir"]
+        # Mirror load_config semantics: a relative root resolves against the
+        # configuration file's directory, not the test process cwd.
+        root_value = Path(config["root"]).expanduser()
+        resolved_root = (
+            root_value if root_value.is_absolute() else (config_path.parent / root_value).resolve()
+        )
+        package_root = resolved_root / config["output_dir"]
         self.assertTrue(list(package_root.glob("*/qa_report.json")))
 
 
