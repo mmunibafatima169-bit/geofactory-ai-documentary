@@ -148,6 +148,17 @@ def build_parser() -> argparse.ArgumentParser:
     render = sub.add_parser("render", help="Render from registered assets and narration using FFmpeg")
     render.add_argument("job_id")
 
+    plan = sub.add_parser(
+        "plan", help="Visual Director: build scene_manifest.json from the narration plan"
+    )
+    plan.add_argument("job_id")
+    plan.add_argument("--title", default="Documentary draft")
+
+    editorial = sub.add_parser(
+        "editorial-report", help="Editorial QC: reuse/static checks + contact sheet"
+    )
+    editorial.add_argument("job_id")
+
     qa = sub.add_parser("qa", help="Run release-gate checks for a job")
     qa.add_argument("job_id")
 
@@ -714,6 +725,66 @@ def run(args: argparse.Namespace) -> int:
         target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
         transition_job(db, args.job_id, target, "QA completed after render.")
         print(f"Render complete. Status: {target}; critical failures: {report['critical_failures']}")
+    elif args.command == "plan":
+        from geofactory.studio.visual_director import (
+            plan_scenes, segments_from_narration,
+        )
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        script_path = package / "script.md"
+        narration_path = package / "narration.txt"
+        if script_path.is_file():
+            raw = script_path.read_text(encoding="utf-8")
+            text = raw.partition("## Narration")[2] or raw
+        elif narration_path.is_file():
+            text = narration_path.read_text(encoding="utf-8")
+        else:
+            raise SystemExit("plan requires script.md or narration.txt in the package")
+        duration = 0.0
+        wav = package / "narration.wav"
+        if wav.is_file():
+            duration = audio_duration_seconds(wav, config.ffprobe)
+        if duration <= 0:
+            words = len(text.split())
+            duration = max(60.0, words / 2.7)
+        engines = {"ffmpeg"}
+        repo_root = Path(__file__).resolve().parents[2]
+        if (repo_root / "studio" / "remotion" / "package.json").is_file():
+            engines.add("remotion")
+        if shutil.which("blender"):
+            engines.add("blender")
+        if shutil.which("manim"):
+            engines.add("manim")
+        segments = segments_from_narration(text, duration)
+        manifest = plan_scenes(
+            args.job_id, args.title, segments,
+            engines_available=engines, width=config.width, height=config.height,
+        )
+        out = package / "scene_manifest.json"
+        manifest.save(out)
+        engines_used = sorted({s.engine for s in manifest.scenes})
+        print(f"Scene manifest: {out}")
+        print(f"{len(manifest.scenes)} scenes over {duration:.1f}s · engines: {', '.join(engines_used)}")
+    elif args.command == "editorial-report":
+        from geofactory.studio.editorial_qa import build_report
+        from geofactory.studio.scene_manifest import SceneManifest
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        manifest = SceneManifest.load(package / "scene_manifest.json")
+        video = package / "final.mp4"
+        report = build_report(
+            manifest,
+            video=video if video.is_file() else None,
+            work_dir=package,
+            ffmpeg=config.ffmpeg,
+        )
+        out = package / "editorial_report.json"
+        report.save(out)
+        print(f"Editorial report: {out}")
+        print(
+            f"scenes={report.scene_count} critical={report.critical_count} "
+            f"static_max={report.static_wall_max_s:.1f}s repeats={len(report.repeated_assets)}"
+        )
     elif args.command == "qa":
         job = get_job(db, args.job_id)
         had_approval = job["status"] == "approved"

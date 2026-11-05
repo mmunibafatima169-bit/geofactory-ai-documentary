@@ -37,3 +37,11 @@ venv/
 .coverage
 htmlcov/
 .DS_Store
+
+# Studio layer
+studio/remotion/node_modules/
+studio/remotion/out/
+studio/remotion/.remotion/
+studio/**/.frames/
+studio/manim/media/
+studio/blender/*.frames/
