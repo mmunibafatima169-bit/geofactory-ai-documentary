@@ -117,30 +117,57 @@ def render_video(
     if duration <= 0:
         raise RenderError("Narration duration is not positive.")
     total_frames = max(1, math.ceil(duration * FRAME_RATE))
-    timeline: list[tuple[dict[str, object], int]] = []
     frames_remaining = total_frames
+    video_segments: list[tuple[dict[str, object], int]] = []
     for record, clip_duration in video_durations:
         frame_count = min(math.ceil(clip_duration * FRAME_RATE), frames_remaining)
         if frame_count > 0:
-            timeline.append((record, frame_count))
+            video_segments.append((record, frame_count))
             frames_remaining -= frame_count
         if frames_remaining == 0:
             break
+    # Still-image pacing: no single photo may hold the screen longer than a
+    # documentary beat (~22 s); assets rotate round-robin when more narration
+    # time must be covered, and a floor (~12 s) keeps cuts from feeling jumpy.
+    min_still_frames = 12 * FRAME_RATE
+    max_still_frames = 22 * FRAME_RATE
+    image_segments: list[tuple[dict[str, object], int]] = []
     if frames_remaining:
         if not image_records:
             raise RenderError(
                 "Registered clips do not cover the narration duration; add licensed still "
                 "images or longer video clips instead of looping footage."
             )
-        base_frames = frames_remaining // len(image_records)
-        image_frames = [base_frames] * len(image_records)
-        for index in range(frames_remaining % len(image_records)):
-            image_frames[index] += 1
-        timeline.extend(
-            (record, frame_count)
-            for record, frame_count in zip(image_records, image_frames, strict=True)
-            if frame_count > 0
+        target_frames = math.ceil(
+            max(min_still_frames, min(max_still_frames, frames_remaining / len(image_records)))
         )
+        frames_left = frames_remaining
+        cursor = 0
+        while frames_left > 0:
+            take = min(target_frames, frames_left)
+            image_segments.append((image_records[cursor % len(image_records)], take))
+            frames_left -= take
+            cursor += 1
+    # The first map/stock scene opens the film (cold-open zoom); remaining
+    # scenes book-end the piece inside the closing stretch of the timeline,
+    # where comparison content typically plays in this genre.
+    closing_start = 0.70
+    timeline: list[tuple[dict[str, object], int]] = []
+    if video_segments:
+        timeline.append(video_segments[0])
+    extras = video_segments[1:]
+    anchors: dict[int, list[tuple[dict[str, object], int]]] = {}
+    spread = len(extras) + 1
+    for position, segment in enumerate(extras, start=1):
+        fraction = closing_start + (1.0 - closing_start) * position / spread
+        anchor = min(len(image_segments), round(len(image_segments) * fraction))
+        anchors.setdefault(anchor, []).append(segment)
+    for index, segment in enumerate(image_segments):
+        timeline.extend(anchors.pop(index, []))
+        timeline.append(segment)
+    timeline.extend(anchors.pop(len(image_segments), []))
+    for leftover in anchors.values():
+        timeline.extend(leftover)
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary_output = destination.with_name(
         f".{destination.stem}.{uuid.uuid4().hex}.tmp.mp4"
@@ -167,14 +194,39 @@ def render_video(
                     "-t", f"{segment_duration:.6f}", "-i", str(source),
                 ]
             )
+            # Alternating Ken Burns motion per segment: push-in with drift,
+            # pull-back, lateral pan, vertical pan — plus a restrained grade
+            # (mild saturation/contrast lift and a soft vignette).
+            motion_mode = index % 4
+            if motion_mode == 0:
+                motion = (
+                    "zoompan=z='min(zoom+0.00012,1.10)':"
+                    "x='iw/2-(iw/zoom/2)+sin(on/250)*8':"
+                    "y='ih/2-(ih/zoom/2)+cos(on/300)*5'"
+                )
+            elif motion_mode == 1:
+                motion = (
+                    "zoompan=z='if(gte(on,2),max(zoom-0.00012,1.0),1.10)':"
+                    "x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+                )
+            elif motion_mode == 2:
+                motion = (
+                    "zoompan=z=1.08:"
+                    f"x='(iw-iw/zoom)*(on-1)/{max(1, frame_count)}':"
+                    "y='ih/2-(ih/zoom/2)'"
+                )
+            else:
+                motion = (
+                    "zoompan=z=1.08:"
+                    "x='iw/2-(iw/zoom/2)':"
+                    f"y='(ih-ih/zoom)*(on-1)/{max(1, frame_count)}'"
+                )
             filters.append(
                 f"[{index}:v]"
                 f"scale={config.width}:{config.height}:force_original_aspect_ratio=increase,"
                 f"crop={config.width}:{config.height},"
-                f"zoompan=z='min(zoom+0.00006,1.08)':"
-                f"x='iw/2-(iw/zoom/2)+sin(on/250)*8':"
-                f"y='ih/2-(ih/zoom/2)+cos(on/300)*5':"
-                f"d=1:s={config.width}x{config.height}:fps={FRAME_RATE},"
+                f"{motion}:d=1:s={config.width}x{config.height}:fps={FRAME_RATE},"
+                f"eq=saturation=1.05:contrast=1.03,vignette=angle=PI/6,"
                 f"trim=end_frame={frame_count},setpts=PTS-STARTPTS,setsar=1,"
                 f"format=yuv420p[v{index}]"
             )
