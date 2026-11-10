@@ -1,0 +1,40 @@
+{
+  "generated_at": "2026-11-05",
+  "baseline": {
+    "path": "studio/remotion/out/venice_sample_60s_v1.mp4",
+    "duration_s": 60.0,
+    "resolution": "1920x1080",
+    "fps": 30,
+    "integrated_loudness_lufs": -15.7,
+    "decoded_freeze_warnings": 5,
+    "subtitle_readability_warnings": 3,
+    "real_footage_assets": 0,
+    "factual_display_gate": false
+  },
+  "upgrade": {
+    "path": "studio/remotion/out/venice_sample_60s_v2.mp4",
+    "duration_s": 60.0,
+    "resolution": "1920x1080",
+    "fps": 30,
+    "integrated_loudness_lufs": -15.7,
+    "decoded_freeze_warnings": 0,
+    "subtitle_readability_warnings": 0,
+    "real_footage_assets": 2,
+    "factual_display_gate": true,
+    "editorial_critical_findings": 0,
+    "factual_approval_blocked": false,
+    "repeated_assets": 0,
+    "static_wall_max_s": 0.0
+  },
+  "changes": [
+    "Licensed real Venice footage in the cold open (CC BY-SA 3.0)",
+    "Public-domain 1896 Grand Canal archival footage in the historical/statistical beat",
+    "Footage relevance scoring, technical probe, rights ledger, SHA-256 and duplicate-shot detection",
+    "Single sourced JSON drives displayed 90, 194, 300, 78 and 118 values",
+    "241 cm diagnosed as an old transient count-up frame; v2 animates bar height while displaying only final verified values",
+    "Clause-aware subtitle chunks under 84 characters",
+    "Continuous information-bearing motion in chart, MOSE water, and comparison map",
+    "Decoded black/freeze, A/V drift, clipping, silence, subtitle, missing-asset and factual QA"
+  ],
+  "human_review": "Automation found no critical technical/editorial/factual consistency failures. Full human viewing, source review and final creative judgement remain mandatory."
+}

@@ -1,0 +1,150 @@
+{
+  "job_id": "venice-sample-60s",
+  "title": "Why Is Venice Sinking? — 60-second studio sample",
+  "fps": 30,
+  "width": 1920,
+  "height": 1080,
+  "scenes": [
+    {
+      "scene_id": "sc-001",
+      "narration": "Venice is sinking. The most beautiful city ever built on water is slowly losing its fight against the sea.",
+      "start_s": 0.0,
+      "end_s": 8.433,
+      "visual_objective": "cold_open",
+      "engine": "remotion",
+      "animation_type": "globe_zoom_title",
+      "camera": "push_in",
+      "text_overlays": [
+        "kinetic_headline",
+        "location_label"
+      ],
+      "transition": "zoom_punch",
+      "sound_fx": [
+        "sting"
+      ],
+      "assets": [
+        "remotion://S1ColdOpen",
+        "/app/geofactory-ai-documentary/studio/remotion/public/footage/gondolas.webm"
+      ],
+      "source_ids": [],
+      "rationale": "Visual Director: narration beat is cold open; rendered with remotion using globe zoom title and a push in camera."
+    },
+    {
+      "scene_id": "sc-002",
+      "narration": "It sits inside a shallow lagoon on Italy's Adriatic coast, spread across more than a hundred islands, with three narrow inlets connecting it to the open sea.",
+      "start_s": 7.933,
+      "end_s": 18.367,
+      "visual_objective": "map_context",
+      "engine": "remotion",
+      "animation_type": "map_highlight_arrows",
+      "camera": "pan_right",
+      "text_overlays": [
+        "inlet_labels",
+        "lower_third"
+      ],
+      "transition": "cut",
+      "sound_fx": [
+        "whoosh"
+      ],
+      "assets": [
+        "remotion://S2LagoonMap"
+      ],
+      "source_ids": [],
+      "rationale": "Visual Director: narration beat is map context; rendered with remotion using map highlight arrows and a pan right camera."
+    },
+    {
+      "scene_id": "sc-003",
+      "narration": "Beneath the stone, millions of wooden piles were driven down through mud and clay into a firmer layer. Starved of oxygen under the water, the timber never rotted. It hardened instead.",
+      "start_s": 17.867,
+      "end_s": 30.267,
+      "visual_objective": "engineering_demo",
+      "engine": "remotion",
+      "animation_type": "cross_section_build",
+      "camera": "pan_down",
+      "text_overlays": [
+        "strata_callouts",
+        "stat_headline"
+      ],
+      "transition": "dip_to_black",
+      "sound_fx": [
+        "whoosh"
+      ],
+      "assets": [
+        "remotion://S3Foundations"
+      ],
+      "source_ids": [],
+      "rationale": "Visual Director: narration beat is engineering demo; rendered with remotion using cross section build and a pan down camera."
+    },
+    {
+      "scene_id": "sc-004",
+      "narration": "But the sediment keeps compacting. Industrial groundwater pumping accelerated the sinking until the nineteen seventies. In nineteen sixty-six, a record surge reached one hundred and ninety-four centimetres.",
+      "start_s": 29.767,
+      "end_s": 42.167,
+      "visual_objective": "data_chart",
+      "engine": "remotion",
+      "animation_type": "animated_bars_countup",
+      "camera": "static",
+      "text_overlays": [
+        "axis_labels",
+        "headline_number"
+      ],
+      "transition": "cut",
+      "sound_fx": [
+        "whoosh"
+      ],
+      "assets": [
+        "remotion://S4Stats",
+        "/app/geofactory-ai-documentary/studio/remotion/public/footage/venice-1896.webm"
+      ],
+      "source_ids": [],
+      "rationale": "Visual Director: narration beat is data chart; rendered with remotion using animated bars countup and a static camera."
+    },
+    {
+      "scene_id": "sc-005",
+      "narration": "So Italy built MOSE: seventy-eight hollow steel gates that rest on the seabed, then swing upward on compressed air to lock the Adriatic out.",
+      "start_s": 41.667,
+      "end_s": 52.1,
+      "visual_objective": "engineering_demo",
+      "engine": "remotion",
+      "animation_type": "mechanism_animation",
+      "camera": "static",
+      "text_overlays": [
+        "part_callouts",
+        "level_indicator"
+      ],
+      "transition": "dip_to_black",
+      "sound_fx": [
+        "whoosh"
+      ],
+      "assets": [
+        "remotion://S5Mose"
+      ],
+      "source_ids": [],
+      "rationale": "Visual Director: narration beat is engineering demo; rendered with remotion using mechanism animation and a static camera."
+    },
+    {
+      "scene_id": "sc-006",
+      "narration": "The shield works. But Venice still sinks, the sea still rises, and this city is only the first of many.",
+      "start_s": 51.6,
+      "end_s": 60.0,
+      "visual_objective": "comparison_montage",
+      "engine": "remotion",
+      "animation_type": "world_zoom_markers",
+      "camera": "pull_back",
+      "text_overlays": [
+        "city_labels",
+        "closing_title"
+      ],
+      "transition": "cut",
+      "sound_fx": [
+        "sting"
+      ],
+      "assets": [
+        "remotion://S6Closing"
+      ],
+      "source_ids": [],
+      "rationale": "Visual Director: narration beat is comparison montage; rendered with remotion using world zoom markers and a pull back camera."
+    }
+  ],
+  "version": 1
+}

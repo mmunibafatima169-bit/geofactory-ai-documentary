@@ -4,6 +4,23 @@ This repository contains a local-first documentary workflow for preparing eviden
 
 **Important current boundary:** the offline demo creates a clearly labelled draft package, not a finished documentary. The optional online demo discovers Wikipedia sources and Commons images, but does not assert verified facts, narration, or a rendered video; QA blocks approval. Full editorial verification, current YouTube OAuth upload, automatic scheduling, and causal analytics are not implemented. Do not treat generated material or a passing automated check as editorial/legal review.
 
+## Professional Studio layer and rendered proof
+
+The additive `studio/` architecture keeps Python as orchestrator, uses Remotion
+for primary motion graphics, preserves optional Manim/Blender adapters, and
+uses FFmpeg for final assembly/audio/subtitles. Start with:
+
+- [STUDIO.md](./STUDIO.md) — architecture and staged integration status.
+- [STUDIO_QUALITY_V2.md](./STUDIO_QUALITY_V2.md) — factual/visual/audio/QA upgrade.
+- [60-second Venice v2 sample](./examples/studio-sample-v2/) — actual 1080p30
+  render plus manifest, licence ledger, contact sheet, factual report and
+  decoded editorial QA.
+- [PROJECT_MASTER_LOG.md](./PROJECT_MASTER_LOG.md) — complete reconstruction
+  log and resume instructions.
+
+The sample demonstrates rendered motion and automated checks; it is not a claim
+that the output equals any reference creator or replaces human editorial review.
+
 ## Requirements and quick start
 
 - Python 3.11 or newer (the current environment was assessed at Python 3.14).

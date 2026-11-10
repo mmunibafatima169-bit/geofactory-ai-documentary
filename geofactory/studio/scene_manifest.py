@@ -14,10 +14,14 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 ENGINES = {"remotion", "blender", "manim", "ffmpeg"}
+# Scenes may overlap by at most one cross-dissolve; anything larger means the
+# plan is genuinely out of order rather than cross-faded.
+MAX_TRANSITION_OVERLAP_S = 1.0
 VISUAL_OBJECTIVES = {
     "cold_open", "map_zoom", "map_context", "historical_reconstruction",
     "engineering_demo", "data_chart", "timeline", "comparison_montage",
-    "photo_evidence", "title_card", "closing_beat",
+    "photo_evidence", "cinematic_footage", "archival_footage",
+    "satellite_imagery", "technical_diagram", "title_card", "closing_beat",
 }
 CAMERA_KINDS = {"push_in", "pull_back", "pan_right", "pan_down", "dolly_orbit", "crane_rise", "static"}
 TRANSITIONS = {"cut", "dip_to_black", "zoom_punch", "wipe_map"}
@@ -83,7 +87,7 @@ class SceneManifest:
             if scene.scene_id in ids:
                 raise ManifestError(f"Duplicate scene id {scene.scene_id}")
             ids.add(scene.scene_id)
-            if scene.start_s < cursor - 0.01:
+            if scene.start_s < cursor - MAX_TRANSITION_OVERLAP_S:
                 raise ManifestError(f"{scene.scene_id}: scenes out of order or overlapping")
             cursor = scene.end_s
         if cursor <= 0 or cursor > 900:

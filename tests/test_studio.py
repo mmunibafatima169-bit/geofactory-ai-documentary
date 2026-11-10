@@ -7,11 +7,13 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from geofactory.studio.asset_selector import VisualAssetCandidate, score_candidate
 from geofactory.studio.editorial_qa import (
     build_report, check_reuses, check_static_walls,
 )
+from geofactory.studio.factual_verifier import verify_fact_ledger
 from geofactory.studio.scene_manifest import ManifestError, SceneManifest, ScenePlan
-from geofactory.studio.visual_director import Segment, plan_scenes
+from geofactory.studio.visual_director import Segment, plan_scenes, rank_visual_treatments
 
 
 def scene(n: int, start: float, end: float, engine: str = "ffmpeg",
@@ -116,6 +118,54 @@ class EditorialQaTests(unittest.TestCase):
         report = build_report(manifest)
         self.assertEqual(report.critical_count, 0)
         self.assertTrue(any(f.code == "editorial_clean" for f in report.findings))
+
+
+class AssetAndFactTests(unittest.TestCase):
+    def test_relevant_licensed_footage_scores_above_generic(self) -> None:
+        relevant = VisualAssetCandidate(
+            "venice", "Gondolas in Venice", "Canal water and Venice city",
+            "video", "https://commons.wikimedia.org/wiki/File:X.webm",
+            "https://upload.wikimedia.org/x.webm", "Creator", "CC BY-SA 4.0",
+            "https://creativecommons.org/licenses/by-sa/4.0/", "2026-11-05",
+            width=1920, height=1080, duration_s=12, tags=["venice", "canal", "water"],
+        )
+        generic = VisualAssetCandidate(
+            "generic", "Beautiful city", "Generic travel skyline",
+            "video", "https://commons.wikimedia.org/wiki/File:Y.webm",
+            "https://upload.wikimedia.org/y.webm", "Creator", "CC BY-SA 4.0",
+            "https://creativecommons.org/licenses/by-sa/4.0/", "2026-11-05",
+            width=1920, height=1080, duration_s=12,
+        )
+        narration = "Venice is a city built on canal water with gondolas."
+        self.assertGreater(score_candidate(narration, relevant).overall,
+                           score_candidate(narration, generic).overall)
+
+    def test_factual_verifier_catches_conflict_and_unsourced_display(self) -> None:
+        ledger = {
+            "sources": [{"id": "s", "url": "https://example.org/source", "accessed_at": "2026-11-05", "reliability": "primary"}],
+            "claims": [
+                {"id": "a", "quantity": "peak", "value": 194, "unit": "cm", "display_value": 194,
+                 "narration_value": 194, "source_ids": ["s"], "verified": True, "uncertainty": "datum"},
+                {"id": "b", "quantity": "peak", "value": 187, "unit": "cm", "display_value": 187,
+                 "narration_value": None, "source_ids": ["s"], "verified": True, "uncertainty": "other event"},
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "facts.json"
+            path.write_text(json.dumps(ledger), encoding="utf-8")
+            report = verify_fact_ledger(path, displayed_text="194 cm and 241 cm", narration_text="194")
+        codes = {f["code"] for f in report["findings"]}
+        self.assertIn("conflicting_numbers", codes)
+        self.assertIn("unsourced_display_number", codes)
+        self.assertTrue(report["approval_blocked"])
+
+    def test_visual_director_penalises_repeated_objective(self) -> None:
+        text = "The lagoon islands and coast show where the city sits on water."
+        first = rank_visual_treatments(text, [])
+        repeated = rank_visual_treatments(text, [("map_context", "remotion")])
+        first_map = next(score for score, rule, _ in first if rule[1] == "map_context")
+        repeated_map = next(score for score, rule, _ in repeated if rule[1] == "map_context")
+        self.assertLess(repeated_map, first_map)
 
 
 if __name__ == "__main__":

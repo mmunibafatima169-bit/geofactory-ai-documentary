@@ -1,0 +1,18 @@
+{
+  "job_id": "venice-sample-60s",
+  "scene_count": 6,
+  "static_wall_max_s": 0.0,
+  "repeated_assets": [],
+  "critical_findings": 0,
+  "contact_sheet": "/app/geofactory-ai-documentary/studio/remotion/out/editorial_contact_sheet.jpg",
+  "findings": [
+    {
+      "level": "note",
+      "code": "editorial_clean",
+      "message": "No editorial heuristics tripped; human viewing still required."
+    }
+  ],
+  "limits": [
+    "Editorial heuristics supplement, and never replace, a full human viewing."
+  ]
+}

@@ -1,0 +1,74 @@
+{
+  "generated_at": "2026-11-05",
+  "assets": [
+    {
+      "asset_id": "commons-gondolas-2015",
+      "title": "Gondolas in Venice",
+      "description": "Real modern footage of gondolas moving through Venice canals; city built on water.",
+      "media_type": "video",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Gondolas_in_Venice.webm",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/4/46/Gondolas_in_Venice.webm",
+      "creator": "Amada44",
+      "licence": "CC BY-SA 3.0",
+      "licence_url": "https://creativecommons.org/licenses/by-sa/3.0/",
+      "accessed_at": "2026-11-05",
+      "local_path": "/app/geofactory-ai-documentary/studio/remotion/public/footage/gondolas.webm",
+      "width": 1280,
+      "height": 720,
+      "duration_s": 12.163,
+      "sha256": "13cdc16407ff35a310ff4836c744cf8647d29327c93203e8d44cdd673c637c7a",
+      "tags": [
+        "venice",
+        "gondola",
+        "canal",
+        "water",
+        "city"
+      ]
+    },
+    {
+      "asset_id": "commons-grand-canal-1896",
+      "title": "Venise, Panorama du Grand Canal, 1896",
+      "description": "Historical archival moving image of Venice's Grand Canal filmed in 1896.",
+      "media_type": "video",
+      "source_page": "https://commons.wikimedia.org/wiki/File:Venise_Panorama_du_Grand_Canal_1896.webm",
+      "download_url": "https://upload.wikimedia.org/wikipedia/commons/e/e8/Venise_Panorama_du_Grand_Canal_1896.webm",
+      "creator": "Alexandre Promio",
+      "licence": "Public domain",
+      "licence_url": "https://creativecommons.org/publicdomain/mark/1.0/",
+      "accessed_at": "2026-11-05",
+      "local_path": "/app/geofactory-ai-documentary/studio/remotion/public/footage/venice-1896.webm",
+      "width": 1364,
+      "height": 1022,
+      "duration_s": 49.959,
+      "sha256": "002b6bb6120cdd53f8a943e9ccb9af0195de883658b22de9a4628cec5cee70f2",
+      "tags": [
+        "venice",
+        "grand canal",
+        "historical",
+        "archive",
+        "1896"
+      ]
+    }
+  ],
+  "scores": [
+    {
+      "asset_id": "commons-gondolas-2015",
+      "semantic_relevance": 100,
+      "technical_quality": 61,
+      "visual_variety": 100,
+      "rights_confidence": 100,
+      "overall": 91,
+      "explanation": "semantic overlap=['built', 'canals', 'city', 'venice', 'water']; 1280x720, 12.2s; aspect delta=0.000; repeat-term penalty=0; licence=CC BY-SA 3.0"
+    },
+    {
+      "asset_id": "commons-grand-canal-1896",
+      "semantic_relevance": 61,
+      "technical_quality": 69,
+      "visual_variety": 88,
+      "rights_confidence": 100,
+      "overall": 72,
+      "explanation": "semantic overlap=['historical', 'venice']; 1364x1022, 50.0s; aspect delta=0.443; repeat-term penalty=1; licence=Public domain"
+    }
+  ],
+  "notice": "Scores are editorial heuristics; rights and relevance still require human review."
+}

@@ -1,0 +1,100 @@
+{
+  "generated_at": "2026-11-05",
+  "sources": [
+    {
+      "id": "src-mose-ministry",
+      "title": "The Mose: What is it and how does it work",
+      "publisher": "Italian Ministry of Infrastructure and Transport / Venice Water Authority",
+      "url": "https://www.fincosit.it/fincosit/wp-content/uploads/2019/06/glf_mose.pdf",
+      "accessed_at": "2026-11-05",
+      "reliability": "primary",
+      "notes": "Official project material: 78 mobile gates; protection from tides up to 3 m."
+    },
+    {
+      "id": "src-kit-venice-2019",
+      "title": "Flooding in Venice, Italy — Forensic Disaster Analysis",
+      "publisher": "CEDIM, Karlsruhe Institute of Technology",
+      "url": "https://www.cedim.kit.edu/download/FDA_VENICE_2019_draft_e.pdf",
+      "accessed_at": "2026-11-05",
+      "reliability": "scientific",
+      "notes": "Documents 194 cm on 4 November 1966 using Comune di Venezia tide data."
+    },
+    {
+      "id": "src-unesco-venice",
+      "title": "Venice and its Lagoon",
+      "publisher": "UNESCO World Heritage Centre",
+      "url": "https://whc.unesco.org/en/list/394/",
+      "accessed_at": "2026-11-05",
+      "reliability": "primary",
+      "notes": "UNESCO property description: Venice is spread over 118 small islands."
+    }
+  ],
+  "claims": [
+    {
+      "id": "fact-acqua-threshold",
+      "quantity": "acqua_alta_reference_display_cm",
+      "value": 90,
+      "unit": "cm",
+      "narration_value": null,
+      "display_value": 90,
+      "source_ids": ["src-kit-venice-2019"],
+      "verified": true,
+      "display_label": "ACQUA ALTA — reference threshold",
+      "uncertainty": "This is a labelled reference threshold in the infographic, not a claim that every event peaks at 90 cm."
+    },
+    {
+      "id": "fact-1966-peak",
+      "quantity": "1966_peak_punta_salute_cm",
+      "value": 194,
+      "unit": "cm",
+      "narration_value": 194,
+      "display_value": 194,
+      "source_ids": ["src-kit-venice-2019"],
+      "verified": true,
+      "display_label": "1966 FLOOD — Punta della Salute datum",
+      "uncertainty": "194 cm uses Venice's Punta della Salute datum; values against mean sea level differ."
+    },
+    {
+      "id": "fact-mose-design",
+      "quantity": "mose_design_max_tide_cm",
+      "value": 300,
+      "unit": "cm",
+      "narration_value": null,
+      "display_value": 300,
+      "source_ids": ["src-mose-ministry"],
+      "verified": true,
+      "display_label": "MOSE DESIGN LIMIT — 3 m",
+      "uncertainty": "A stated design protection level, not a measured Venice flood."
+    },
+    {
+      "id": "fact-mose-gates",
+      "quantity": "mose_gate_count",
+      "value": 78,
+      "unit": "gates",
+      "narration_value": 78,
+      "display_value": 78,
+      "source_ids": ["src-mose-ministry"],
+      "verified": true,
+      "display_label": "78 HOLLOW STEEL GATES",
+      "uncertainty": "Four barrier rows across three lagoon inlets."
+    },
+    {
+      "id": "fact-islands",
+      "quantity": "venice_island_count",
+      "value": 118,
+      "unit": "islands",
+      "narration_value": null,
+      "display_value": 118,
+      "source_ids": ["src-unesco-venice"],
+      "verified": true,
+      "display_label": "118 ISLANDS",
+      "uncertainty": "UNESCO describes the World Heritage city as spread over 118 small islands; narration conservatively says more than one hundred."
+    }
+  ],
+  "animation_audit": {
+    "observed_intermediate_value": 241,
+    "scene": "S4Stats",
+    "finding": "241 was not a source value. It was a transient frame in a 0-to-300 spring count-up toward the verified 300 cm design limit.",
+    "v2_policy": "Animate bar height only. Display the verified final number throughout and label 300 cm explicitly as a design limit."
+  }
+}
