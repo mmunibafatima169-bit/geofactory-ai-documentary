@@ -1,0 +1,51 @@
+{
+  "video": "examples/studio-sample-v2/venice_sample_60s_v2.mp4",
+  "sha256": "c9a83c9bea077bdf8d3e8f827d073b0fb44091b4bb86db821781d5ca5c8e0f8d",
+  "metadata": {
+    "duration_s": 60.0,
+    "size_bytes": 15991310,
+    "video": {
+      "codec_name": "h264",
+      "profile": "High",
+      "width": 1920,
+      "height": 1080,
+      "sample_aspect_ratio": "1:1",
+      "display_aspect_ratio": "16:9",
+      "r_frame_rate": "30/1",
+      "avg_frame_rate": "30/1",
+      "nb_frames": "1800",
+      "pix_fmt": "yuv420p"
+    },
+    "audio": {
+      "codec_name": "aac",
+      "profile": "LC",
+      "sample_rate": "48000",
+      "channels": 2,
+      "channel_layout": "stereo",
+      "duration": "59.999000"
+    }
+  },
+  "decode": {
+    "exit_code": 0,
+    "stderr": "",
+    "result": "PASS"
+  },
+  "frame_hashes": {
+    "decoded_frames": 1800,
+    "unique_hashes": 1800,
+    "consecutive_exact_duplicates": 0
+  },
+  "subtitles": {
+    "cue_count": 22,
+    "syntax_bounds_overlap_errors": [],
+    "cues_over_84_chars": [],
+    "embedded_sidecar_word_sequences_match": true,
+    "actual_speech_alignment": "NOT TESTED",
+    "dictionary_spelling": "NOT TESTED"
+  },
+  "limits": [
+    "Freeze detections are heuristic and may be intentional static holds.",
+    "No ASR/forced alignment or listening test was performed.",
+    "Frame-hash duplication does not by itself establish editorially inappropriate repetition."
+  ]
+}

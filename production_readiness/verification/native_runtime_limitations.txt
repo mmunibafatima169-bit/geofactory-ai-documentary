@@ -1,0 +1,21 @@
+--- bpy missing libraries ---
+Traceback (most recent call last):
+  File "<stdin>", line 2, in <module>
+ImportError: libXrender.so.1: cannot open shared object file: No such file or directory
+--- all bpy native deps likely ---
+.venv/lib/python3.11/site-packages/bpy/__init__.so
+.venv/lib/python3.11/site-packages/bpy/lib/libIex.so.32
+.venv/lib/python3.11/site-packages/bpy/lib/libIlmThread.so.32
+.venv/lib/python3.11/site-packages/bpy/lib/libImath.so.30
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXCore.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXFormat.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXGenGlsl.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXGenMsl.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXGenShader.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXRender.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libMaterialXRenderHw.so.1
+.venv/lib/python3.11/site-packages/bpy/lib/libOpenColorIO.so.2.4
+.venv/lib/python3.11/site-packages/bpy/lib/libOpenEXR.so.32
+.venv/lib/python3.11/site-packages/bpy/lib/libOpenEXRCore.so.32
+.venv/lib/python3.11/site-packages/bpy/lib/libOpenImageDenoise.so.2
+--- piper model files ---

@@ -1,0 +1,369 @@
+--- repository files ---
+.env.example
+.gitignore
+ARCHITECTURE.md
+MASTER_SPEC_SUMMARY.md
+PROJECT_MASTER_LOG.md
+README.md
+REFERENCE_ANALYSIS.md
+REFERENCE_STYLE.md
+ROADMAP.md
+STUDIO.md
+STUDIO_QUALITY_V2.md
+config.example.json
+examples/sample_asset_ledger.json
+examples/sample_job.json
+examples/sample_metadata.json
+examples/sample_qa_report.json
+examples/sample_source_ledger.json
+examples/studio-sample-v2/README.md
+examples/studio-sample-v2/asset_selection.json
+examples/studio-sample-v2/comparison_report.json
+examples/studio-sample-v2/editorial_contact_sheet.jpg
+examples/studio-sample-v2/editorial_report_v2.json
+examples/studio-sample-v2/factual_report.json
+examples/studio-sample-v2/scene_manifest.json
+examples/studio-sample-v2/subtitles.srt
+examples/studio-sample-v2/venice_sample_60s_v2.mp4
+geofactory/__init__.py
+geofactory/__main__.py
+geofactory/agents/__init__.py
+geofactory/agents/groq_client.py
+geofactory/agents/local_model.py
+geofactory/agents/research_agent.py
+geofactory/agents/script_agent.py
+geofactory/agents/topic_agent.py
+geofactory/analytics/__init__.py
+geofactory/analytics/feedback.py
+geofactory/app/__init__.py
+geofactory/app/dashboard.py
+geofactory/cli.py
+geofactory/core/__init__.py
+geofactory/core/config.py
+geofactory/core/database.py
+geofactory/core/jobs.py
+geofactory/core/logging.py
+geofactory/media/__init__.py
+geofactory/media/asset_manager.py
+geofactory/media/map_animation_engine.py
+geofactory/media/thumbnail_engine.py
+geofactory/media/thumbnail_maker.py
+geofactory/media/tts_engine.py
+geofactory/media/video_editor.py
+geofactory/media/visual_builder.py
+geofactory/publishing/__init__.py
+geofactory/publishing/youtube_client.py
+geofactory/quality/__init__.py
+geofactory/quality/qa_engine.py
+geofactory/scheduler/__init__.py
+geofactory/scheduler/worker.py
+geofactory/studio/__init__.py
+geofactory/studio/asset_selector.py
+geofactory/studio/design_tokens.py
+geofactory/studio/editorial_qa.py
+geofactory/studio/factual_verifier.py
+geofactory/studio/scene_manifest.py
+geofactory/studio/visual_director.py
+geofactory/wikimedia.py
+main.py
+requirements.txt
+scripts/analyze_video_structure.py
+setup.ps1
+story_generator.py
+studio/assemble_sample60.py
+studio/blender/mose_barriers.py
+studio/engines/blender_adapter.py
+studio/engines/manim_adapter.py
+studio/manim/subsidence_graph.py
+studio/prepare_sample_assets.py
+studio/remotion/package-lock.json
+studio/remotion/package.json
+studio/remotion/public/ne110.geojson
+studio/remotion/src/Root.tsx
+studio/remotion/src/components/Chrome.tsx
+studio/remotion/src/compositions/Sample60.tsx
+studio/remotion/src/compositions/VeniceColdOpen.tsx
+studio/remotion/src/index.ts
+studio/remotion/src/theme.ts
+studio/remotion/tsconfig.json
+studio/render_scenes.sh
+studio/sample60_facts.json
+studio/sample60_manifest.py
+tests/__init__.py
+tests/test_core.py
+tests/test_map_thumbnail.py
+tests/test_media.py
+tests/test_pipeline.py
+tests/test_providers.py
+tests/test_studio.py
+tests/test_wikimedia.py
+--- untracked non-generated overview ---
+ M studio/assemble_sample60.py
+ M studio/remotion/src/compositions/Sample60.tsx
+ M studio/sample60_facts.json
+ M studio/sample60_manifest.py
+?? DELIVERY_BUNDLE.zip
+?? DELIVERY_BUNDLE_V3.zip
+?? FINAL_DELIVERY_REPORT.md
+?? FINAL_DELIVERY_REPORT_V3.md
+?? PROJECT_MASTER_CONTEXT.md
+?? delivery_evidence/
+?? delivery_evidence_v3/
+?? examples/studio-sample-v3/
+?? production_readiness/
+--- tree depth 3 ---
+d .
+d ./.git
+d ./.venv
+d ./delivery_evidence
+d ./delivery_evidence_v3
+d ./examples
+d ./examples/studio-sample-v2
+d ./examples/studio-sample-v3
+d ./geofactory
+d ./geofactory/__pycache__
+d ./geofactory/agents
+d ./geofactory/agents/__pycache__
+d ./geofactory/analytics
+d ./geofactory/analytics/__pycache__
+d ./geofactory/app
+d ./geofactory/app/__pycache__
+d ./geofactory/core
+d ./geofactory/core/__pycache__
+d ./geofactory/media
+d ./geofactory/media/__pycache__
+d ./geofactory/publishing
+d ./geofactory/publishing/__pycache__
+d ./geofactory/quality
+d ./geofactory/quality/__pycache__
+d ./geofactory/scheduler
+d ./geofactory/scheduler/__pycache__
+d ./geofactory/studio
+d ./geofactory/studio/__pycache__
+d ./production_readiness
+d ./production_readiness/environment
+d ./production_readiness/installation
+d ./production_readiness/verification
+d ./scripts
+d ./studio
+d ./studio/__pycache__
+d ./studio/blender
+d ./studio/engines
+d ./studio/manim
+d ./studio/remotion
+d ./studio/remotion/node_modules
+d ./studio/remotion/out
+d ./studio/remotion/public
+d ./studio/remotion/src
+d ./tests
+d ./tests/__pycache__
+f ./.env.example
+f ./.gitignore
+f ./ARCHITECTURE.md
+f ./DELIVERY_BUNDLE.zip
+f ./DELIVERY_BUNDLE_V3.zip
+f ./FINAL_DELIVERY_REPORT.md
+f ./FINAL_DELIVERY_REPORT_V3.md
+f ./MASTER_SPEC_SUMMARY.md
+f ./PROJECT_MASTER_CONTEXT.md
+f ./PROJECT_MASTER_LOG.md
+f ./README.md
+f ./REFERENCE_ANALYSIS.md
+f ./REFERENCE_STYLE.md
+f ./ROADMAP.md
+f ./STUDIO.md
+f ./STUDIO_QUALITY_V2.md
+f ./config.example.json
+f ./examples/sample_asset_ledger.json
+f ./examples/sample_job.json
+f ./examples/sample_metadata.json
+f ./examples/sample_qa_report.json
+f ./examples/sample_source_ledger.json
+f ./examples/studio-sample-v2/README.md
+f ./examples/studio-sample-v2/asset_selection.json
+f ./examples/studio-sample-v2/comparison_report.json
+f ./examples/studio-sample-v2/editorial_contact_sheet.jpg
+f ./examples/studio-sample-v2/editorial_report_v2.json
+f ./examples/studio-sample-v2/factual_report.json
+f ./examples/studio-sample-v2/scene_manifest.json
+f ./examples/studio-sample-v2/subtitles.srt
+f ./examples/studio-sample-v2/venice_sample_60s_v2.mp4
+f ./examples/studio-sample-v3/README.md
+f ./examples/studio-sample-v3/asset_provenance.json
+f ./examples/studio-sample-v3/factual_report.json
+f ./examples/studio-sample-v3/scene_manifest.json
+f ./examples/studio-sample-v3/subtitles.srt
+f ./examples/studio-sample-v3/venice_sample_60s_v3.mp4
+f ./geofactory/__init__.py
+f ./geofactory/__main__.py
+f ./geofactory/__pycache__/__init__.cpython-311.pyc
+f ./geofactory/__pycache__/__main__.cpython-311.pyc
+f ./geofactory/__pycache__/cli.cpython-311.pyc
+f ./geofactory/__pycache__/wikimedia.cpython-311.pyc
+f ./geofactory/agents/__init__.py
+f ./geofactory/agents/groq_client.py
+f ./geofactory/agents/local_model.py
+f ./geofactory/agents/research_agent.py
+f ./geofactory/agents/script_agent.py
+f ./geofactory/agents/topic_agent.py
+f ./geofactory/analytics/__init__.py
+f ./geofactory/analytics/feedback.py
+f ./geofactory/app/__init__.py
+f ./geofactory/app/dashboard.py
+f ./geofactory/cli.py
+f ./geofactory/core/__init__.py
+f ./geofactory/core/config.py
+f ./geofactory/core/database.py
+f ./geofactory/core/jobs.py
+f ./geofactory/core/logging.py
+f ./geofactory/media/__init__.py
+f ./geofactory/media/asset_manager.py
+f ./geofactory/media/map_animation_engine.py
+f ./geofactory/media/thumbnail_engine.py
+f ./geofactory/media/thumbnail_maker.py
+f ./geofactory/media/tts_engine.py
+f ./geofactory/media/video_editor.py
+f ./geofactory/media/visual_builder.py
+f ./geofactory/publishing/__init__.py
+f ./geofactory/publishing/youtube_client.py
+f ./geofactory/quality/__init__.py
+f ./geofactory/quality/qa_engine.py
+f ./geofactory/scheduler/__init__.py
+f ./geofactory/scheduler/worker.py
+f ./geofactory/studio/__init__.py
+f ./geofactory/studio/asset_selector.py
+f ./geofactory/studio/design_tokens.py
+f ./geofactory/studio/editorial_qa.py
+f ./geofactory/studio/factual_verifier.py
+f ./geofactory/studio/scene_manifest.py
+f ./geofactory/studio/visual_director.py
+f ./geofactory/wikimedia.py
+f ./main.py
+f ./production_readiness/environment/repository_inventory.txt
+f ./production_readiness/environment/runtimes.txt
+f ./production_readiness/environment/system.txt
+f ./requirements.txt
+f ./scripts/analyze_video_structure.py
+f ./setup.ps1
+f ./story_generator.py
+f ./studio/__pycache__/assemble_sample60.cpython-311.pyc
+f ./studio/__pycache__/sample60_manifest.cpython-311.pyc
+f ./studio/assemble_sample60.py
+f ./studio/blender/mose_barriers.py
+f ./studio/engines/blender_adapter.py
+f ./studio/engines/manim_adapter.py
+f ./studio/manim/subsidence_graph.py
+f ./studio/prepare_sample_assets.py
+f ./studio/remotion/package-lock.json
+f ./studio/remotion/package.json
+f ./studio/remotion/tsconfig.json
+f ./studio/render_scenes.sh
+f ./studio/sample60_facts.json
+f ./studio/sample60_manifest.py
+f ./tests/__init__.py
+f ./tests/__pycache__/__init__.cpython-311.pyc
+f ./tests/__pycache__/test_core.cpython-311.pyc
+f ./tests/__pycache__/test_map_thumbnail.cpython-311.pyc
+f ./tests/__pycache__/test_media.cpython-311.pyc
+f ./tests/__pycache__/test_pipeline.cpython-311.pyc
+f ./tests/__pycache__/test_providers.cpython-311.pyc
+f ./tests/__pycache__/test_studio.cpython-311.pyc
+f ./tests/__pycache__/test_wikimedia.cpython-311.pyc
+f ./tests/test_core.py
+f ./tests/test_map_thumbnail.py
+f ./tests/test_media.py
+f ./tests/test_pipeline.py
+f ./tests/test_providers.py
+f ./tests/test_studio.py
+f ./tests/test_wikimedia.py
+--- tracked line counts ---
+     0 tests/__init__.py
+     1 geofactory/agents/__init__.py
+     1 geofactory/analytics/__init__.py
+     1 geofactory/app/__init__.py
+     1 geofactory/core/__init__.py
+     1 geofactory/media/__init__.py
+     1 geofactory/publishing/__init__.py
+     1 geofactory/quality/__init__.py
+     1 geofactory/scheduler/__init__.py
+     3 geofactory/__init__.py
+     3 geofactory/__main__.py
+     4 examples/sample_asset_ledger.json
+     4 studio/remotion/src/index.ts
+     5 examples/sample_source_ledger.json
+     7 examples/sample_job.json
+     7 geofactory/studio/__init__.py
+     8 MASTER_SPEC_SUMMARY.md
+    10 story_generator.py
+    11 examples/sample_metadata.json
+    14 studio/remotion/tsconfig.json
+    18 examples/studio-sample-v2/editorial_report_v2.json
+    18 geofactory/publishing/youtube_client.py
+    19 main.py
+    19 studio/remotion/package.json
+    21 REFERENCE_STYLE.md
+    22 examples/sample_qa_report.json
+    30 config.example.json
+    30 geofactory/core/logging.py
+    34 examples/studio-sample-v2/factual_report.json
+    35 studio/remotion/src/Root.tsx
+    40 examples/studio-sample-v2/comparison_report.json
+    50 geofactory/media/visual_builder.py
+    55 geofactory/agents/groq_client.py
+    55 studio/remotion/src/theme.ts
+    58 ROADMAP.md
+    61 geofactory/agents/local_model.py
+    62 geofactory/studio/design_tokens.py
+    64 geofactory/analytics/feedback.py
+    66 ARCHITECTURE.md
+    67 geofactory/agents/topic_agent.py
+    73 STUDIO.md
+    73 examples/studio-sample-v2/README.md
+    74 examples/studio-sample-v2/asset_selection.json
+    83 studio/engines/manim_adapter.py
+    94 studio/manim/subsidence_graph.py
+   100 REFERENCE_ANALYSIS.md
+   102 STUDIO_QUALITY_V2.md
+   102 studio/engines/blender_adapter.py
+   109 geofactory/scheduler/worker.py
+   113 geofactory/wikimedia.py
+   118 studio/prepare_sample_assets.py
+   122 studio/sample60_manifest.py
+   131 geofactory/studio/scene_manifest.py
+   132 geofactory/studio/factual_verifier.py
+   132 tests/test_core.py
+   135 studio/blender/mose_barriers.py
+   139 studio/sample60_facts.json
+   150 examples/studio-sample-v2/scene_manifest.json
+   151 studio/remotion/src/components/Chrome.tsx
+   172 tests/test_studio.py
+   173 geofactory/studio/asset_selector.py
+   180 geofactory/core/config.py
+   187 geofactory/media/thumbnail_maker.py
+   203 geofactory/core/database.py
+   208 tests/test_providers.py
+   214 geofactory/studio/visual_director.py
+   225 README.md
+   239 studio/remotion/src/compositions/VeniceColdOpen.tsx
+   242 geofactory/app/dashboard.py
+   245 geofactory/agents/script_agent.py
+   261 tests/test_wikimedia.py
+   265 tests/test_media.py
+   281 geofactory/core/jobs.py
+   294 geofactory/agents/research_agent.py
+   306 geofactory/media/video_editor.py
+   306 scripts/analyze_video_structure.py
+   311 tests/test_pipeline.py
+   350 tests/test_map_thumbnail.py
+   354 geofactory/studio/editorial_qa.py
+   376 geofactory/media/tts_engine.py
+   390 studio/assemble_sample60.py
+   544 geofactory/media/map_animation_engine.py
+   569 geofactory/media/thumbnail_engine.py
+   575 PROJECT_MASTER_LOG.md
+   582 geofactory/quality/qa_engine.py
+   673 studio/remotion/src/compositions/Sample60.tsx
+   752 geofactory/media/asset_manager.py
+   919 geofactory/cli.py
+  3963 studio/remotion/package-lock.json
+ 17400 total

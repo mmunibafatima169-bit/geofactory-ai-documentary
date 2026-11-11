@@ -1,0 +1,12 @@
+{
+  "date_utc": "2026-11-11",
+  "video_rendered": false,
+  "blender": "BLOCKED",
+  "manim": "BLOCKED",
+  "piper_synthesis": "BLOCKED_NO_MODEL",
+  "python_tests": "56 run OK, 5 skipped",
+  "node": "22.22.3",
+  "remotion": "4.0.542",
+  "ffmpeg": "n9.0.2",
+  "overall": "INCOMPLETE"
+}

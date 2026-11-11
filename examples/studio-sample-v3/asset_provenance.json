@@ -1,0 +1,26 @@
+{
+  "created_at": "2026-11-10",
+  "v2_sha256": "c9a83c9bea077bdf8d3e8f827d073b0fb44091b4bb86db821781d5ca5c8e0f8d",
+  "assets": [
+    {
+      "local_source": "studio/remotion/public/footage/gondolas-v3.mp4",
+      "source_id": "commons-gondolas-2015",
+      "title": "Gondolas in Venice",
+      "creator": "Amada44",
+      "licence": "CC BY-SA 3.0",
+      "original_source_page": "https://commons.wikimedia.org/wiki/File:Gondolas_in_Venice.webm",
+      "derivation": "Clean 1280x720 crop from preserved v2 at 0.0s; v2 asset ledger identifies the original Commons footage. Used because original download hosts are unreachable in this environment.",
+      "sha256": "5c8371b35737d1c25ebe54ebfd88e3aa7b7cd548d4b422b33a9b71c7c073a132"
+    },
+    {
+      "local_source": "studio/remotion/public/footage/venice-1896-v3.mp4",
+      "source_id": "commons-grand-canal-1896",
+      "title": "Venise, Panorama du Grand Canal, 1896",
+      "creator": "Alexandre Promio",
+      "licence": "Public domain",
+      "original_source_page": "https://commons.wikimedia.org/wiki/File:Venise_Panorama_du_Grand_Canal_1896.webm",
+      "derivation": "Clean 1280x720 crop from preserved v2 at 30.117s; v2 asset ledger identifies the original Commons footage. Used because original download hosts are unreachable in this environment.",
+      "sha256": "6ca2706505e81f3bfeace8314485e6b733e0ed282725a28575e359b7e68b1fb7"
+    }
+  ]
+}

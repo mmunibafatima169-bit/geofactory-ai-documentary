@@ -1,0 +1,36 @@
+--- shell interpreters ---
+/usr/bin/python
+/usr/bin/python3
+/usr/bin/pip
+/usr/bin/pip3
+/usr/local/bin/node
+/usr/local/bin/npm
+/usr/local/bin/npx
+/usr/bin/convert
+--- active python ---
+/usr/bin/python3
+Python 3.11.2 (main, Apr  8 2026, 01:58:00) [GCC 12.2.0]
+executable /usr/bin/python3
+prefix /usr
+base_prefix /usr
+venv False
+platform Linux-6.1.158+-x86_64-with-glibc2.36
+purelib /usr/local/lib/python3.11/dist-packages
+--- project venv ---
+Python 3.11.2 (main, Apr  8 2026, 01:58:00) [GCC 12.2.0]
+/home/user/geofactory-ai-documentary/.venv/bin/python
+venv True
+pip 23.0.1 from /home/user/geofactory-ai-documentary/.venv/lib/python3.11/site-packages/pip (python 3.11)
+--- global packages ---
+[{"name": "pip", "version": "23.0.1"}, {"name": "setuptools", "version": "66.1.1"}, {"name": "wheel", "version": "0.38.4"}]
+--- venv packages ---
+[{"name": "aiohappyeyeballs", "version": "2.7.1"}, {"name": "aiohttp", "version": "3.14.5"}, {"name": "aiosignal", "version": "1.4.0"}, {"name": "annotated-types", "version": "0.8.0"}, {"name": "anyio", "version": "4.16.0"}, {"name": "attrs", "version": "26.1.0"}, {"name": "av", "version": "18.1.0"}, {"name": "certifi", "version": "2026.10.23"}, {"name": "distro", "version": "1.9.0"}, {"name": "edge-tts", "version": "7.3.1"}, {"name": "frozenlist", "version": "1.8.0"}, {"name": "groq", "version": "1.7.0"}, {"name": "h11", "version": "0.16.0"}, {"name": "httpcore", "version": "1.0.9"}, {"name": "httpx", "version": "0.28.1"}, {"name": "idna", "version": "3.20"}, {"name": "imageio-ffmpeg", "version": "0.8.1"}, {"name": "multidict", "version": "7.2.1"}, {"name": "numpy", "version": "2.4.6"}, {"name": "pillow", "version": "13.0.0"}, {"name": "pip", "version": "23.0.1"}, {"name": "propcache", "version": "0.5.4"}, {"name": "pydantic", "version": "2.14.3"}, {"name": "pydantic_core", "version": "2.50.4"}, {"name": "setuptools", "version": "66.1.1"}, {"name": "sniffio", "version": "1.3.1"}, {"name": "tabulate", "version": "0.10.0"}, {"name": "typing_extensions", "version": "4.16.0"}, {"name": "typing-inspection", "version": "0.4.5"}, {"name": "yarl", "version": "1.25.1"}]
+--- node ---
+v22.22.3
+10.9.8
+10.9.8
+/usr/local/lib/node_modules
+/usr/local/lib
++-- corepack@0.34.6
+`-- npm@10.9.8
+

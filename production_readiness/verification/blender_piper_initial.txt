@@ -1,0 +1,44 @@
+--- bpy probe (no rendering) ---
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+ImportError: libXrender.so.1: cannot open shared object file: No such file or directory
+--- piper probe ---
+usage: __main__.py [-h] -m MODEL [-c CONFIG] [-i INPUT_FILE] [-f OUTPUT_FILE]
+                   [-d OUTPUT_DIR] [--output-dir-naming {timestamp,text}]
+                   [--output-raw] [-s SPEAKER] [--length-scale LENGTH_SCALE]
+                   [--noise-scale NOISE_SCALE] [--noise-w-scale NOISE_W_SCALE]
+                   [--cuda] [--sentence-silence SENTENCE_SILENCE]
+                   [--volume VOLUME] [--no-normalize] [--data-dir DATA_DIR]
+                   [--debug]
+
+options:
+  -h, --help            show this help message and exit
+  -m MODEL, --model MODEL
+                        Path to Onnx model file
+  -c CONFIG, --config CONFIG
+                        Path to model config file
+  -i INPUT_FILE, --input-file INPUT_FILE, --input_file INPUT_FILE
+                        Paths to input text files
+  -f OUTPUT_FILE, --output-file OUTPUT_FILE, --output_file OUTPUT_FILE
+                        Path to output WAV file (default: stdout)
+  -d OUTPUT_DIR, --output-dir OUTPUT_DIR, --output_dir OUTPUT_DIR
+                        Path to output directory (default: cwd)
+  --output-dir-naming {timestamp,text}
+                        Naming scheme for WAV files in output directory
+                        (default: timestamp)
+  --output-raw, --output_raw
+                        Stream raw audio to stdout
+  -s SPEAKER, --speaker SPEAKER
+                        Id of speaker (default: 0)
+  --length-scale LENGTH_SCALE, --length_scale LENGTH_SCALE
+                        Phoneme length
+  --noise-scale NOISE_SCALE, --noise_scale NOISE_SCALE
+                        Generator noise
+  --noise-w-scale NOISE_W_SCALE, --noise_w_scale NOISE_W_SCALE, --noise-w NOISE_W_SCALE, --noise_w NOISE_W_SCALE
+                        Phoneme width noise
+  --cuda                Use GPU
+  --sentence-silence SENTENCE_SILENCE, --sentence_silence SENTENCE_SILENCE
+--- disk after installs ---
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        21G  4.8G   16G  24% /
+1.4G	.venv

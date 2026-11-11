@@ -1,0 +1,13 @@
+{
+  "date_utc": "2026-11-11",
+  "video_rendered": false,
+  "tests": "70 run OK, 5 skipped",
+  "piper_quality": "NOT_VERIFIED_NO_MODEL",
+  "audio_mix": "PASS_SYNTHETIC",
+  "music_ducking_db": -11.267858942503292,
+  "integrated_loudness_lufs": -16.5,
+  "true_peak_dbtp": -11.7,
+  "blender": "BLOCKED",
+  "manim": "BLOCKED",
+  "overall_readiness": "NOT_READY"
+}

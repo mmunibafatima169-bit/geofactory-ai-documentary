@@ -1,0 +1,50 @@
+--- Blender isolated runtime ---
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ImportError: libXrender.so.1: cannot open shared object file: No such file or directory
+--- Manim environment runtime ---
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+ModuleNotFoundError: No module named 'manim'
+--- Piper import and model availability ---
+piper-tts 1.8.0
+piper import PASS
+voice model: absent; synthesis NOT TESTED
+--- ImageMagick ---
+Version: ImageMagick 6.9.11-60 Q16 x86_64 2021-01-25 https://imagemagick.org
+Copyright: (C) 1999-2021 ImageMagick Studio LLC
+License: https://imagemagick.org/script/license.php
+Features: Cipher DPC Modules OpenMP(4.5) 
+--- Remotion package and types ---
+Node.JS = v22.22.3, OS = linux
+
+On version: 4.0.542
+- @remotion/bundler
+- @remotion/sdk
+- @remotion/cli
+- @remotion/compositor-linux-x64-gnu
+- remotion
+- @remotion/licensing
+- @remotion/media-utils
+- @remotion/paths
+- @remotion/player
+- @remotion/renderer
+- @remotion/streaming
+- @remotion/codemods
+- @remotion/studio-server
+- @remotion/studio-shared
+- @remotion/studio
+- @remotion/timeline-utils
+- @remotion/zod-types
+- @remotion/captions
+- @remotion/openai-whisper
+- @remotion/elevenlabs
+- @remotion/media
+- @remotion/web-renderer
+- @remotion/studio-protocol
+- @remotion/effects
+
+Extra packages:
+- zod@4.6.7
+
+All packages have the correct version.

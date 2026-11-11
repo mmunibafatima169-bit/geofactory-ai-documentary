@@ -1,0 +1,85 @@
+{
+  "job_id": "audio-verification",
+  "sample_rate": 48000,
+  "target_lufs": -16.0,
+  "true_peak_dbtp": -1.5,
+  "cues": [
+    {
+      "cue_id": "narration",
+      "scene_id": "scene-001",
+      "asset": {
+        "asset_id": "narration",
+        "role": "narration",
+        "path": "production_readiness/part3/audio/narration.wav",
+        "source_url": "https://example.com/synthetic-audio",
+        "creator": "GeoFactory synthetic test",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Synthetic verification signal; no editorial use",
+        "sha256": "b3c616cb94053431cab621782f76cabd79971434be2149029986cca19ff1d150",
+        "rights_approved": true
+      },
+      "start_s": 0.0,
+      "gain_db": 0,
+      "trim_start_s": 0.0
+    },
+    {
+      "cue_id": "music",
+      "scene_id": "scene-001",
+      "asset": {
+        "asset_id": "music",
+        "role": "music",
+        "path": "production_readiness/part3/audio/music.wav",
+        "source_url": "https://example.com/synthetic-audio",
+        "creator": "GeoFactory synthetic test",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Synthetic verification signal; no editorial use",
+        "sha256": "56f6e77beca0d0ecc55f885beef713be1d066e17c149ff2733de2a6799140e6d",
+        "rights_approved": true
+      },
+      "start_s": 0.0,
+      "gain_db": -6,
+      "trim_start_s": 0.0
+    },
+    {
+      "cue_id": "ambience",
+      "scene_id": "scene-001",
+      "asset": {
+        "asset_id": "ambience",
+        "role": "ambience",
+        "path": "production_readiness/part3/audio/ambience.wav",
+        "source_url": "https://example.com/synthetic-audio",
+        "creator": "GeoFactory synthetic test",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Synthetic verification signal; no editorial use",
+        "sha256": "3171bfb69dd26c725b208a5317a93fd32a3f3231f63284a45247099722048592",
+        "rights_approved": true
+      },
+      "start_s": 0.0,
+      "gain_db": -6,
+      "trim_start_s": 0.0
+    },
+    {
+      "cue_id": "sfx",
+      "scene_id": "scene-001",
+      "asset": {
+        "asset_id": "sfx",
+        "role": "sfx",
+        "path": "production_readiness/part3/audio/sfx.wav",
+        "source_url": "https://example.com/synthetic-audio",
+        "creator": "GeoFactory synthetic test",
+        "licence": "CC0-1.0",
+        "licence_url": "https://creativecommons.org/publicdomain/zero/1.0/",
+        "attribution": "Synthetic verification signal; no editorial use",
+        "sha256": "832650f1a8b71470317a6d82ec0f1272629771c389780b646193c538a98fd170",
+        "rights_approved": true
+      },
+      "start_s": 0.0,
+      "gain_db": -6,
+      "trim_start_s": 0.0
+    }
+  ],
+  "rights_notice": "All assets require owner rights approval; automated licence allowlists are not legal clearance."
+}

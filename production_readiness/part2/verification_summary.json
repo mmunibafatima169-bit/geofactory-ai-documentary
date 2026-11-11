@@ -1,0 +1,20 @@
+{
+  "date_utc": "2026-11-11",
+  "video_rendered": false,
+  "tests": "65 run OK, 5 skipped",
+  "natural_earth_invalid_before_after": [
+    2,
+    0
+  ],
+  "natural_earth_features_before_after": [
+    177,
+    177
+  ],
+  "gis": "VERIFIED",
+  "satellite_processing": "VERIFIED_SYNTHETIC",
+  "satellite_live_acquisition": "NOT_TESTED",
+  "dem_processing": "VERIFIED_SYNTHETIC",
+  "blender": "CONFIG_IMPLEMENTED_RUNTIME_BLOCKED",
+  "manim": "CONFIG_IMPLEMENTED_RUNTIME_BLOCKED",
+  "architecture_integration": "IMPLEMENTED"
+}

@@ -1,0 +1,35 @@
+{
+  "sources": 4,
+  "claims": 5,
+  "critical_findings": 0,
+  "approval_blocked": false,
+  "allowed_display_numbers": [
+    78.0,
+    80.0,
+    118.0,
+    194.0,
+    300.0
+  ],
+  "findings": [
+    {
+      "level": "note",
+      "code": "narration_number_spelled_or_missing",
+      "message": "Expected narration value 78 not found as digits; verify the spoken-word form"
+    },
+    {
+      "level": "note",
+      "code": "narration_number_spelled_or_missing",
+      "message": "Expected narration value 194 not found as digits; verify the spoken-word form"
+    }
+  ],
+  "animation_audit": {
+    "observed_intermediate_value": 241,
+    "scene": "S4Stats",
+    "finding": "241 was not a source value. It was a transient frame in a 0-to-300 spring count-up toward the verified 300 cm design limit.",
+    "v2_policy": "Animate bar height only. Display the verified final number throughout and label 300 cm explicitly as a design limit.",
+    "v3_policy": "Use 80 cm threshold, fixed source values, safe numeric-label margins, and information-bearing motion through settled chart frames."
+  },
+  "limits": [
+    "Automated checks validate consistency and provenance, not truth; human source review is mandatory."
+  ]
+}

@@ -1,0 +1,34 @@
+--- final storage ---
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root        21G  5.4G   15G  27% /
+1.1G	.venv
+944M	.venv-blender
+25M	.venv-manim
+815M	studio/remotion/node_modules
+--- git diff/stat ---
+ M studio/assemble_sample60.py
+ M studio/remotion/src/compositions/Sample60.tsx
+ M studio/sample60_facts.json
+ M studio/sample60_manifest.py
+?? .venv-blender/
+?? .venv-manim/
+?? DELIVERY_BUNDLE.zip
+?? DELIVERY_BUNDLE_V3.zip
+?? FINAL_DELIVERY_REPORT.md
+?? FINAL_DELIVERY_REPORT_V3.md
+?? PROJECT_MASTER_CONTEXT.md
+?? delivery_evidence/
+?? delivery_evidence_v3/
+?? examples/studio-sample-v3/
+?? geofactory/production/
+?? production_readiness/
+?? tests/test_production_readiness.py
+ studio/assemble_sample60.py                   |  13 ++-
+ studio/remotion/src/compositions/Sample60.tsx | 143 +++++++++++++++++++-------
+ studio/sample60_facts.json                    |  63 +++++++++---
+ studio/sample60_manifest.py                   |   8 +-
+ 4 files changed, 168 insertions(+), 59 deletions(-)
+--- geo bundled versions ---
+rasterio GDAL 3.10.3
+fiona GDAL 3.9.2
+PROJ 9.5.1
