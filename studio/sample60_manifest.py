@@ -26,7 +26,7 @@ OBJECTIVES = {
     "S1ColdOpen": ("cold_open", "globe_zoom_title", "push_in", ["kinetic_headline", "location_label"]),
     "S2LagoonMap": ("map_context", "map_highlight_arrows", "pan_right", ["inlet_labels", "lower_third"]),
     "S3Foundations": ("engineering_demo", "cross_section_build", "pan_down", ["strata_callouts", "stat_headline"]),
-    "S4Stats": ("data_chart", "animated_bars_countup", "static", ["axis_labels", "headline_number"]),
+    "S4Stats": ("data_chart", "animated_bars_datum_guide", "static", ["axis_labels", "headline_number"]),
     "S5Mose": ("engineering_demo", "mechanism_animation", "static", ["part_callouts", "level_indicator"]),
     "S6Closing": ("comparison_montage", "world_zoom_markers", "pull_back", ["city_labels", "closing_title"]),
 }
@@ -40,9 +40,9 @@ def build_manifest() -> SceneManifest:
         objective, animation, camera, overlays = OBJECTIVES[scene.composition]
         assets = [f"remotion://{scene.composition}"]
         if scene.composition == "S1ColdOpen":
-            assets.append(str(REPO / "studio/remotion/public/footage/gondolas.webm"))
+            assets.append(str(REPO / "studio/remotion/public/footage/gondolas-v3.mp4"))
         if scene.composition == "S4Stats":
-            assets.append(str(REPO / "studio/remotion/public/footage/venice-1896.webm"))
+            assets.append(str(REPO / "studio/remotion/public/footage/venice-1896-v3.mp4"))
         scenes.append(ScenePlan(
             scene_id=scene.scene_id,
             narration=scene.narration,
@@ -82,7 +82,7 @@ def main() -> int:
     video = out_dir / "venice_sample_60s_v2.mp4"
     subtitles = out_dir / "work60_v2/subtitles.srt"
     narration = " ".join(scene.narration for scene in SCENES)
-    displayed_text = "118 islands · 90 cm · 194 cm · 300 cm design limit · 78 gates"
+    displayed_text = "118 islands · 80 cm · 194 cm · 300 cm design limit · 78 gates"
     fact_report = verify_fact_ledger(
         REPO / "studio/sample60_facts.json",
         displayed_text=displayed_text,

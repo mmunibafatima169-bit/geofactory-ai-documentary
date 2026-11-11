@@ -1,0 +1,80 @@
+1
+00:00:00,350 --> 00:00:01,728
+Venice is sinking.
+
+2
+00:00:01,778 --> 00:00:08,233
+This extraordinary city built on water is slowly losing its fight against the sea.
+
+3
+00:00:08,283 --> 00:00:11,950
+It sits inside a shallow lagoon on Italy's Adriatic coast,
+
+4
+00:00:12,000 --> 00:00:14,642
+spread across more than a hundred islands,
+
+5
+00:00:14,692 --> 00:00:18,167
+with three narrow inlets connecting it to the open sea.
+
+6
+00:00:18,217 --> 00:00:19,119
+Waterlogged,
+
+7
+00:00:19,169 --> 00:00:21,975
+oxygen-poor mud preserves the piles,
+
+8
+00:00:22,025 --> 00:00:25,227
+but anaerobic bacteria still attack wood.
+
+9
+00:00:25,277 --> 00:00:30,067
+Slow decay and the wood-water-soil system maintain stability.
+
+10
+00:00:30,117 --> 00:00:32,060
+But the sediment keeps compacting.
+
+11
+00:00:32,110 --> 00:00:36,984
+Industrial groundwater pumping accelerated the sinking until the nineteen seventies.
+
+12
+00:00:37,034 --> 00:00:38,274
+In nineteen sixty-six,
+
+13
+00:00:38,324 --> 00:00:41,967
+a record surge reached one hundred and ninety-four centimetres.
+
+14
+00:00:42,017 --> 00:00:43,396
+So Italy built MOSE:
+
+15
+00:00:43,446 --> 00:00:47,469
+seventy-eight hollow steel gates that rest on the seabed,
+
+16
+00:00:47,519 --> 00:00:51,900
+then swing upward on compressed air to hold the Adriatic back.
+
+17
+00:00:51,950 --> 00:00:54,632
+The shield has held back major tides.
+
+18
+00:00:54,682 --> 00:00:56,330
+But Venice still sinks,
+
+19
+00:00:56,380 --> 00:00:57,807
+the sea still rises,
+
+20
+00:00:57,857 --> 00:00:59,800
+and this city is not alone.
+

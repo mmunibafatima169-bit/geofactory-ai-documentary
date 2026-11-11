@@ -1,0 +1,10 @@
+{
+  "audit_date": "2026-11-10",
+  "video_rendered": false,
+  "files": 36,
+  "test_result": "56 run, OK, 5 skipped",
+  "blender_runtime": "FAILED: libXrender.so.1 missing",
+  "manim_runtime": "NOT INSTALLED",
+  "gis_runtime": "PASS: vector and in-memory raster",
+  "overall_readiness": "NOT_READY"
+}

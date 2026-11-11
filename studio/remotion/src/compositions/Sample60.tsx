@@ -90,17 +90,18 @@ export const S1ColdOpen: React.FC = () => {
   const ringR = 0.6 + (pulse / 34) * 2.6;
   const ringO = pulseOn ? Math.max(0, 1 - pulse / 34) : 0;
 
-  const footageOpacity = interpolate(frame, [0, 70, 102], [1, 1, 0], { extrapolateRight: "clamp" });
-  const mapOpacity = interpolate(frame, [72, 112], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const footageScale = interpolate(frame, [0, 105], [1.04, 1.14]);
+  // V3 gives the licensed real-world establishing shot more screen time.
+  const footageOpacity = interpolate(frame, [0, 138, 166], [1, 1, 0], { extrapolateRight: "clamp" });
+  const mapOpacity = interpolate(frame, [140, 176], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const footageScale = interpolate(frame, [0, 166], [1.04, 1.15]);
 
   return (
     <AbsoluteFill style={{ background: C.ink }}>
       {/* Licensed real footage establishes the place before the explanatory map. */}
-      {frame < 108 && (
+      {frame < 172 && (
         <AbsoluteFill style={{ opacity: footageOpacity, overflow: "hidden" }}>
           <OffthreadVideo
-            src={staticFile("footage/gondolas.webm")}
+            src={staticFile("footage/gondolas-v3.mp4")}
             startFrom={34}
             muted
             style={{ width: "100%", height: "100%", objectFit: "cover",
@@ -141,17 +142,17 @@ export const S1ColdOpen: React.FC = () => {
         </svg>
       </AbsoluteFill>
 
-      {frame > 96 && <MapLabel x={1010} y={560} text="VENICE, ITALY" delay={100} />}
+      {frame > 152 && <MapLabel x={1010} y={560} text="VENICE, ITALY" delay={156} />}
 
-      {frame > 120 && (
+      {frame > 170 && (
         <div style={{ position: "absolute", left: 96, top: 120 }}>
           <div style={{ color: C.accent, fontFamily: FONT, fontSize: 26, fontWeight: 800,
                         letterSpacing: "0.34em", marginBottom: 20 }}>
             A CITY AGAINST THE SEA
           </div>
-          <KineticWord text="VENICE" delay={126} />
-          <KineticWord text="IS" delay={134} />
-          <KineticWord text="SINKING" delay={142} highlight />
+          <KineticWord text="VENICE" delay={176} />
+          <KineticWord text="IS" delay={184} />
+          <KineticWord text="SINKING" delay={192} highlight />
         </div>
       )}
       <Grade />
@@ -179,7 +180,7 @@ export const S2LagoonMap: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: C.ink }}>
-      <AbsoluteFill style={{ transform: `scale(${zoom}) translateX(${drift}px)` }}>
+      <AbsoluteFill style={{ transform: `scale(${zoom}) translate(${drift}px, ${Math.sin(frame / 12) * 12}px)` }}>
         <svg viewBox="0 0 1920 1080" width={1920} height={1080}>
           <rect width={1920} height={1080} fill={C.oceanDeep} />
           {/* open Adriatic on the right */}
@@ -216,6 +217,16 @@ export const S2LagoonMap: React.FC = () => {
               </g>
             );
           })}
+          {/* Persistent flow traces make the direction of water exchange legible. */}
+          {inlets.map((inlet, i) => (
+            <g key={`flow-${inlet.name}`}>
+              <line x1={1040} y1={inlet.y + 54} x2={1770} y2={inlet.y + 54}
+                    stroke={C.text} strokeWidth={3} opacity={0.24}
+                    strokeDasharray="20 24" strokeDashoffset={-frame * (2.4 + i * 0.25)} />
+              <circle cx={1710 - ((frame * 5 + i * 90) % 620)} cy={inlet.y + 54} r={7}
+                      fill={C.accent} opacity={0.72} />
+            </g>
+          ))}
         </svg>
       </AbsoluteFill>
 
@@ -249,7 +260,7 @@ export const S3Foundations: React.FC = () => {
   ];
 
   const piles = Array.from({ length: 14 }, (_, i) => i);
-  const camY = interpolate(frame, [0, 360], [0, -70]);
+  const camY = interpolate(frame, [0, 360], [0, -70]) + Math.sin(frame / 15) * 6;
 
   return (
     <AbsoluteFill style={{ background: C.ink }}>
@@ -267,9 +278,15 @@ export const S3Foundations: React.FC = () => {
                   stroke={C.hairline} strokeWidth={2} opacity={0.7} />
           ))}
 
+          {/* A slow inspection scan connects the waterlogged strata to the piles. */}
+          <rect x={100 + ((frame * 8) % 1500)} y={470} width={200} height={550}
+                fill={C.accent} opacity={0.25} />
+          <line x1={100 + ((frame * 8) % 1500)} y1={470}
+                x2={100 + ((frame * 8) % 1500)} y2={1020}
+                stroke={C.accent} strokeWidth={10} opacity={0.65} />
           {/* wooden piles driving down, staggered */}
           {piles.map((i) => {
-            const start = 24 + i * 7;
+            const start = i * 5;
             const p = spring({ frame: frame - start, fps, config: { damping: 18, stiffness: 90 } });
             const top = 560;
             const full = 300;
@@ -293,6 +310,17 @@ export const S3Foundations: React.FC = () => {
               <polygon points="1030,250 1160,330 900,330" fill={C.terrain} stroke={C.text} strokeWidth={2} />
             </g>
           )}
+          {/* Waterlogged conditions and slow anaerobic activity remain visible after construction. */}
+          {[0, 1, 2].map((i) => (
+            <path key={`water-${i}`} d={`M120 ${515 + i * 28} Q420 ${500 + i * 28} 720 ${515 + i * 28} T1420 ${515 + i * 28}`}
+                  fill="none" stroke={C.text} strokeWidth={3} opacity={0.2 + i * 0.05}
+                  strokeDasharray="24 20" strokeDashoffset={-frame * (1.8 + i * 0.35)} />
+          ))}
+          {frame > 175 && Array.from({ length: 12 }, (_, i) => {
+            const phase = (frame * 0.7 + i * 31) % 120;
+            return <circle key={`bacteria-${i}`} cx={650 + (i * 83) % 680} cy={690 + phase}
+                           r={4 + (i % 3)} fill={C.accent} opacity={0.22 + 0.2 * Math.sin(frame / 18 + i)} />;
+          })}
         </svg>
       </AbsoluteFill>
 
@@ -302,15 +330,22 @@ export const S3Foundations: React.FC = () => {
         <MapLabel key={s.label} x={110} y={s.y + camY + 24} text={s.label} delay={40 + i * 16}
                   color={i === 3 ? C.accent : C.muted} />
       ))}
-      {frame > 196 && (
-        <div style={{ position: "absolute", right: 110, top: 190, textAlign: "right", fontFamily: FONT }}>
-          <div style={{ color: C.text, fontSize: 86, fontWeight: 900, lineHeight: 1 }}>MILLIONS</div>
-          <div style={{ color: C.accent, fontSize: 30, fontWeight: 800, letterSpacing: "0.16em", marginTop: 8 }}>
-            OF WOODEN PILES
+      {frame > 175 && (
+        <div style={{ position: "absolute", right: 96, top: 160, width: 570, fontFamily: FONT,
+                      background: "rgba(10,16,24,0.86)", border: `1px solid ${C.hairline}`, padding: 26 }}>
+          <div style={{ color: C.text, fontSize: 52, fontWeight: 900, lineHeight: 1 }}>MILLIONS <span style={{ color: C.accent, fontSize: 25 }}>OF PILES</span></div>
+          <div style={{ color: C.accent, fontSize: 25, fontWeight: 800, letterSpacing: "0.1em", marginTop: 22 }}>
+            WATERLOGGED · OXYGEN-POOR
+          </div>
+          <div style={{ color: C.text, fontSize: 27, lineHeight: 1.35, marginTop: 14 }}>
+            Anaerobic bacteria still attack wood.<br />Decay is slow—not absent.
+          </div>
+          <div style={{ color: C.muted, fontSize: 23, lineHeight: 1.35, marginTop: 14 }}>
+            WOOD + WATER + SOIL<br />help maintain structural stability.
           </div>
         </div>
       )}
-      <LowerThird kicker="NO OXYGEN" title="THE TIMBER HARDENED INSTEAD OF ROTTING" delay={250} />
+      <LowerThird kicker="SLOW DECAY" title="PRESERVED BY THE WOOD–WATER–SOIL SYSTEM" delay={235} />
       <Grade />
     </AbsoluteFill>
   );
@@ -322,25 +357,31 @@ export const S3Foundations: React.FC = () => {
 export const S4Stats: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const chartReveal = spring({ frame: frame - 78, fps, config: { damping: 24, stiffness: 70 } });
-  const archivalOpacity = interpolate(frame, [58, 100], [1, 0], { extrapolateRight: "clamp" });
+  const chartReveal = spring({ frame: frame - 100, fps, config: { damping: 24, stiffness: 70 } });
+  const archivalOpacity = interpolate(frame, [88, 122], [1, 0], { extrapolateRight: "clamp" });
   const bars = [
-    { label: "ACQUA ALTA", sub: "reference threshold", v: fact("fact-acqua-threshold"), color: C.accent, delay: 96 },
-    { label: "1966 FLOOD", sub: "Punta Salute datum", v: fact("fact-1966-peak"), color: C.alert, delay: 132 },
-    { label: "MOSE LIMIT", sub: "design protection", v: fact("fact-mose-design"), color: C.growth, delay: 168 },
+    { label: "ACQUA ALTA", sub: "reference threshold", v: fact("fact-acqua-threshold"), color: C.accent, delay: 118 },
+    { label: "1966 FLOOD", sub: "Punta Salute datum", v: fact("fact-1966-peak"), color: C.alert, delay: 154 },
+    { label: "MOSE LIMIT", sub: "design protection", v: fact("fact-mose-design"), color: C.growth, delay: 190 },
   ];
   const maxV = fact("fact-mose-design");
   const baseY = 830;
   const topY = 330;
+  // A datum guide moves between the three sourced reference levels after the
+  // bars settle. It adds explanatory motion rather than decorative jitter.
+  const gaugeValue = interpolate(frame, [210, 245, 270, 305, 330, 371],
+                                 [80, 80, 194, 194, 300, 300],
+                                 { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const gaugeY = baseY - (gaugeValue / maxV) * (baseY - topY);
 
   return (
     <AbsoluteFill style={{ background: C.ink }}>
       {/* Public-domain 1896 Grand Canal footage: historical evidence, not decoration. */}
-      {frame < 110 && (
+      {frame < 126 && (
         <AbsoluteFill style={{ opacity: archivalOpacity, overflow: "hidden" }}>
-          <OffthreadVideo src={staticFile("footage/venice-1896.webm")} muted
+          <OffthreadVideo src={staticFile("footage/venice-1896-v3.mp4")} muted
             style={{ width: "100%", height: "100%", objectFit: "cover",
-                     transform: `scale(${interpolate(frame, [0, 110], [1.02, 1.12])})`,
+                     transform: `scale(${interpolate(frame, [0, 126], [1.02, 1.12])})`,
                      filter: "grayscale(1) sepia(.25) contrast(1.15)" }} />
           <AbsoluteFill style={{ background: "linear-gradient(90deg, rgba(10,16,24,.82), transparent 75%)" }} />
           <div style={{ position: "absolute", left: 96, top: 120, fontFamily: FONT }}>
@@ -377,6 +418,26 @@ export const S4Stats: React.FC = () => {
               </g>
             );
           })}
+          {/* Continuous vertical scan keeps each comparison stage active. */}
+          {frame > 105 && (
+            <rect x={390 + ((frame * 9) % 1320)} y={285} width={90} height={baseY - 285}
+                  fill={C.text} opacity={0.09} />
+          )}
+          {frame > 105 && (
+            <line x1={420 + ((frame * 9) % 1320)} y1={285}
+                  x2={420 + ((frame * 9) % 1320)} y2={baseY}
+                  stroke={C.text} strokeWidth={12} opacity={0.45} />
+          )}
+          {/* Animated datum reader: threshold → measured record → design limit. */}
+          {frame > 205 && (
+            <g opacity={0.62}>
+              <line x1={390} y1={gaugeY} x2={1770} y2={gaugeY} stroke={C.text} strokeWidth={3}
+                    strokeDasharray="18 16" strokeDashoffset={-frame * 3} />
+              <circle cx={1770} cy={gaugeY} r={10} fill={C.text} />
+              <text x={360} y={gaugeY - 18} fill={C.text} fontSize={22} fontWeight={800}
+                    fontFamily={FONT} textAnchor="end">DATUM GUIDE</text>
+            </g>
+          )}
           {/* Moving dashed bracket communicates the 106 cm design headroom. */}
           {frame > 190 && (
             <g opacity={interpolate(frame, [190, 215], [0, 1], { extrapolateRight: "clamp" })}>
@@ -397,14 +458,14 @@ export const S4Stats: React.FC = () => {
           const h = (b.v / maxV) * (baseY - topY) * p;
           return (
             <div key={b.label} style={{ position: "absolute", left: 520 + i * 400, width: 250,
-                                       top: Math.max(278, baseY - h - 108), textAlign: "center",
+                                       top: Math.max(230, baseY - h - 108), textAlign: "center",
                                        opacity: interpolate(p, [0, .15], [0, 1], { extrapolateRight: "clamp" }) }}>
-              <span style={{ color: b.color, fontFamily: FONT, fontSize: 88, fontWeight: 900 }}>{b.v}</span>
+              <span style={{ color: b.color, fontFamily: FONT, fontSize: 80, fontWeight: 900 }}>{b.v}</span>
               <span style={{ color: b.color, fontFamily: FONT, fontSize: 30, fontWeight: 800 }}> cm</span>
             </div>
           );
         })}
-        <Eyebrow text="VERIFIED NUMBERS" delay={88} />
+        <Eyebrow text="VERIFIED NUMBERS" delay={110} />
         <div style={{ position: "absolute", left: 96, top: 150, fontFamily: FONT }}>
           <div style={{ color: C.text, fontSize: 60, fontWeight: 900 }}>THREE DIFFERENT MEASURES</div>
           <div style={{ color: C.muted, fontSize: 26, marginTop: 10 }}>threshold · measured peak · engineering design limit</div>
@@ -434,14 +495,14 @@ export const S5Mose: React.FC = () => {
   const seaBase = 640;
   const tide = interpolate(frame, [170, 300], [0, seaBase - (gateTopY + 34)],
                            { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const seaTop = seaBase - tide;
-  const lagoonTop = 648;
+  const seaTop = seaBase - tide + Math.sin(frame / 8) * 12;
+  const lagoonTop = 648 + Math.sin(frame / 13) * 4;
 
   const gates = [0, 1, 2, 3, 4];
 
   return (
     <AbsoluteFill style={{ background: C.ink }}>
-      <svg viewBox="0 0 1920 1080" width={1920} height={1080}>
+      <svg viewBox="0 0 1920 1080" width={1920} height={1080} style={{ transform: `translateY(${Math.sin(frame / 16) * 6}px)` }}>
         <defs>
           <linearGradient id="seaGrad" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#1E5578" />
@@ -485,14 +546,22 @@ export const S5Mose: React.FC = () => {
         })}
 
         {/* compressed-air indicator */}
-        {frame > 56 && frame < 180 && (
-          <g opacity={interpolate(frame, [56, 70, 160, 180], [0, 1, 1, 0])}>
+        {frame > 56 && (
+          <g opacity={interpolate(frame, [56, 70], [0, 0.65], { extrapolateRight: "clamp" })}>
             {[0, 1, 2].map((i) => {
               const bubbleY = seabedY - 60 - ((frame * 4 + i * 55) % 190);
               return <circle key={i} cx={830 - i * 18} cy={bubbleY} r={9 + i * 2} fill={C.text} opacity={0.5} />;
             })}
           </g>
         )}
+
+        {/* A moving pressure marker follows the incoming tide toward the gate. */}
+        <g opacity={0.65}>
+          <line x1={1160} y1={590} x2={1780} y2={590} stroke={C.alert} strokeWidth={4}
+                strokeDasharray="28 22" strokeDashoffset={-frame * 4} />
+          <polygon points={`${1180 + ((frame * 4) % 520)},575 ${1160 + ((frame * 4) % 520)},590 ${1180 + ((frame * 4) % 520)},605`}
+                   fill={C.alert} />
+        </g>
 
         {/* level-difference indicator between the two sides */}
         {frame > 190 && (
@@ -515,7 +584,7 @@ export const S5Mose: React.FC = () => {
       </div>
       {frame > 60 && <MapLabel x={560} y={736} text="COMPRESSED AIR" delay={64} color={C.text} />}
       {frame > 180 && <MapLabel x={1120} y={seaTop - 118} text="TIDE HELD BACK" delay={184} color={C.alert} />}
-      {frame > 200 && <MapLabel x={150} y={lagoonTop - 118} text="CITY STAYS DRY" delay={204} color={C.growth} />}
+      {frame > 200 && <MapLabel x={150} y={lagoonTop - 118} text="LAGOON LEVEL HELD" delay={204} color={C.growth} />}
       <LowerThird kicker="FIRST RAISED" title="OCTOBER 2020" delay={230} />
       <Grade />
     </AbsoluteFill>
@@ -564,6 +633,8 @@ export const S6Closing: React.FC = () => {
               <g key={c.name} opacity={p}>
                 <line x1={vx} y1={vy} x2={cx} y2={cy} stroke={C.accent} strokeWidth={1.5}
                       strokeDasharray="9 10" strokeDashoffset={-frame * 1.8} opacity={0.34} />
+                <circle cx={vx + (cx - vx) * pulsePhase} cy={vy + (cy - vy) * pulsePhase}
+                        r={3.2} fill={C.accent} opacity={0.9} />
                 <circle cx={cx} cy={cy} r={4 + p * 3} fill={C.alert} stroke={C.text} strokeWidth={1.2} />
                 <circle cx={cx} cy={cy} r={8 + pulsePhase * 16} fill="none" stroke={C.alert} strokeWidth={1.2}
                         opacity={p * 0.65 * (1 - pulsePhase)} />

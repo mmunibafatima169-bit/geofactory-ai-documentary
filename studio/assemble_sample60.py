@@ -53,26 +53,25 @@ class Scene:
 
 SCENES: list[Scene] = [
     Scene("sc-001", "S1ColdOpen", 8.433333333333334,
-          "Venice is sinking. The most beautiful city ever built on water is "
+          "Venice is sinking. This extraordinary city built on water is "
           "slowly losing its fight against the sea.", sfx="sting"),
     Scene("sc-002", "S2LagoonMap", 10.433333333333334,
           "It sits inside a shallow lagoon on Italy's Adriatic coast, spread across "
           "more than a hundred islands, with three narrow inlets connecting it to the open sea.",
           sfx="whoosh"),
     Scene("sc-003", "S3Foundations", 12.4,
-          "Beneath the stone, millions of wooden piles were driven down through mud and clay "
-          "into a firmer layer. Starved of oxygen under the water, the timber never rotted. "
-          "It hardened instead.", sfx="whoosh"),
+          "Waterlogged, oxygen-poor mud preserves the piles, but anaerobic bacteria still attack wood. "
+          "Slow decay and the wood-water-soil system maintain stability.", sfx="whoosh"),
     Scene("sc-004", "S4Stats", 12.4,
           "But the sediment keeps compacting. Industrial groundwater pumping accelerated the "
           "sinking until the nineteen seventies. In nineteen sixty-six, a record surge reached "
           "one hundred and ninety-four centimetres.", sfx="whoosh"),
     Scene("sc-005", "S5Mose", 10.433333333333334,
           "So Italy built MOSE: seventy-eight hollow steel gates that rest on the seabed, then "
-          "swing upward on compressed air to lock the Adriatic out.", sfx="whoosh"),
+          "swing upward on compressed air to hold the Adriatic back.", sfx="whoosh"),
     Scene("sc-006", "S6Closing", 8.4,
-          "The shield works. But Venice still sinks, the sea still rises, and this city is only "
-          "the first of many.", sfx="sting"),
+          "The shield has held back major tides. But Venice still sinks, the sea still rises, and this city "
+          "is not alone.", sfx="sting"),
 ]
 
 

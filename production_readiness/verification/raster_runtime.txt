@@ -1,0 +1,2 @@
+raster_roundtrip GTiff 4 4 EPSG:4326 120
+PASS: in-memory GeoTIFF write/read; no video generated

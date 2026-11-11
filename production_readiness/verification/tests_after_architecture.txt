@@ -1,0 +1,61 @@
+test_config_rejects_non_loopback_dashboard_and_publishing (tests.test_core.ConfigTests.test_config_rejects_non_loopback_dashboard_and_publishing) ... ok
+test_config_uses_local_safe_defaults (tests.test_core.ConfigTests.test_config_uses_local_safe_defaults) ... ok
+test_invalid_transitions_are_rejected (tests.test_core.JobTests.test_invalid_transitions_are_rejected) ... ok
+test_package_change_invalidates_approval (tests.test_core.JobTests.test_package_change_invalidates_approval) ... ok
+test_restart_requeues_processing_but_never_retries_ambiguous_upload (tests.test_core.JobTests.test_restart_requeues_processing_but_never_retries_ambiguous_upload) ... ok
+test_schema_initialization_and_idempotent_creation (tests.test_core.JobTests.test_schema_initialization_and_idempotent_creation) ... ok
+test_rights_gate_registers_known_format_and_license (tests.test_core.RightsTests.test_rights_gate_registers_known_format_and_license) ... ok
+test_rights_gate_rejects_unknown_licences_and_bad_media (tests.test_core.RightsTests.test_rights_gate_rejects_unknown_licences_and_bad_media) ... ok
+test_50m_country_data_download_is_pinned_and_cached (tests.test_map_thumbnail.MapAndThumbnailTests.test_50m_country_data_download_is_pinned_and_cached) ... ok
+test_map_scene_records_dataset_and_rejects_tampering (tests.test_map_thumbnail.MapAndThumbnailTests.test_map_scene_records_dataset_and_rejects_tampering) ... ok
+test_qa_reports_map_and_thumbnail_engine_results_actionably (tests.test_map_thumbnail.MapAndThumbnailTests.test_qa_reports_map_and_thumbnail_engine_results_actionably) ... ok
+test_thumbnail_engine_emits_three_distinct_scored_editable_concepts (tests.test_map_thumbnail.MapAndThumbnailTests.test_thumbnail_engine_emits_three_distinct_scored_editable_concepts) ... ok
+test_video_editor_accepts_verified_generated_map_scenes (tests.test_map_thumbnail.MapAndThumbnailTests.test_video_editor_accepts_verified_generated_map_scenes) ... ok
+test_espeak_generates_measured_audio_and_synchronized_srt (tests.test_media.MediaIntegrationTests.test_espeak_generates_measured_audio_and_synchronized_srt) ... skipped 'eSpeak NG and FFmpeg/FFprobe are required'
+test_ffmpeg_render_contains_video_audio_and_soft_subtitles (tests.test_media.MediaIntegrationTests.test_ffmpeg_render_contains_video_audio_and_soft_subtitles) ... skipped 'eSpeak NG and FFmpeg/FFprobe are required'
+test_nearly_silent_audio_chunk_is_rejected (tests.test_media.MediaIntegrationTests.test_nearly_silent_audio_chunk_is_rejected) ... skipped 'FFmpeg/FFprobe are required'
+test_sentence_chunking_keeps_text_and_bounds_chunks (tests.test_media.MediaIntegrationTests.test_sentence_chunking_keeps_text_and_bounds_chunks) ... ok
+test_thumbnail_is_1280x720_jpeg_over_the_supplied_image (tests.test_media.MediaIntegrationTests.test_thumbnail_is_1280x720_jpeg_over_the_supplied_image) ... skipped 'FFmpeg/FFprobe are required'
+test_video_clips_take_priority_and_background_music_is_mixed (tests.test_media.MediaIntegrationTests.test_video_clips_take_priority_and_background_music_is_mixed) ... skipped 'FFmpeg/FFprobe and eSpeak NG are required'
+test_documented_cli_dry_run_works_without_api_keys (tests.test_pipeline.PipelineTests.test_documented_cli_dry_run_works_without_api_keys) ... ok
+test_local_script_draft_requires_word_count_and_known_claim_ids (tests.test_pipeline.PipelineTests.test_local_script_draft_requires_word_count_and_known_claim_ids) ... ok
+test_offline_demo_generates_package_and_blocks_approval (tests.test_pipeline.PipelineTests.test_offline_demo_generates_package_and_blocks_approval) ... ok
+test_qa_requires_per_claim_human_review_and_synced_ledger (tests.test_pipeline.PipelineTests.test_qa_requires_per_claim_human_review_and_synced_ledger) ... ok
+test_research_ledger_requires_traceable_fact_sources (tests.test_pipeline.PipelineTests.test_research_ledger_requires_traceable_fact_sources) ... ok
+test_subtitle_generation_and_validation (tests.test_pipeline.PipelineTests.test_subtitle_generation_and_validation) ... ok
+test_thumbnail_failure_after_render_returns_job_to_qa_failed (tests.test_pipeline.PipelineTests.test_thumbnail_failure_after_render_returns_job_to_qa_failed) ... ok
+test_worker_processes_a_queued_job_sequentially (tests.test_pipeline.PipelineTests.test_worker_processes_a_queued_job_sequentially) ... ok
+test_engine_fallback_is_explicit (tests.test_production_readiness.ProductionDirectionTests.test_engine_fallback_is_explicit) ... ok
+test_invalid_runtime_is_rejected (tests.test_production_readiness.ProductionDirectionTests.test_invalid_runtime_is_rejected) ... ok
+test_readiness_does_not_pass_on_planning_alone (tests.test_production_readiness.ProductionDirectionTests.test_readiness_does_not_pass_on_planning_alone) ... ok
+test_research_requires_scene_claims_and_review (tests.test_production_readiness.ProductionDirectionTests.test_research_requires_scene_claims_and_review) ... ok
+test_subject_classifier (tests.test_production_readiness.ProductionDirectionTests.test_subject_classifier) ... ok
+test_subjects_do_not_share_one_visual_template (tests.test_production_readiness.ProductionDirectionTests.test_subjects_do_not_share_one_visual_template) ... ok
+test_api_keys_are_not_in_config_repr_or_missing_key_errors (tests.test_providers.ProviderTests.test_api_keys_are_not_in_config_repr_or_missing_key_errors) ... ok
+test_edge_tts_chunk_is_converted_to_verified_wav (tests.test_providers.ProviderTests.test_edge_tts_chunk_is_converted_to_verified_wav) ... ok
+test_groq_client_returns_json_and_never_logs_credentials (tests.test_providers.ProviderTests.test_groq_client_returns_json_and_never_logs_credentials) ... ok
+test_owner_music_registration_requires_and_records_audio_rights (tests.test_providers.ProviderTests.test_owner_music_registration_requires_and_records_audio_rights) ... ok
+test_pexels_and_pixabay_results_are_registered_as_licensed_video (tests.test_providers.ProviderTests.test_pexels_and_pixabay_results_are_registered_as_licensed_video) ... ok
+test_factual_verifier_catches_conflict_and_unsourced_display (tests.test_studio.AssetAndFactTests.test_factual_verifier_catches_conflict_and_unsourced_display) ... ok
+test_relevant_licensed_footage_scores_above_generic (tests.test_studio.AssetAndFactTests.test_relevant_licensed_footage_scores_above_generic) ... ok
+test_visual_director_penalises_repeated_objective (tests.test_studio.AssetAndFactTests.test_visual_director_penalises_repeated_objective) ... ok
+test_clean_manifest_passes_with_note (tests.test_studio.EditorialQaTests.test_clean_manifest_passes_with_note) ... ok
+test_static_wall_and_reuse_flags (tests.test_studio.EditorialQaTests.test_static_wall_and_reuse_flags) ... ok
+test_overlap_or_out_of_order_rejected (tests.test_studio.ManifestTests.test_overlap_or_out_of_order_rejected) ... ok
+test_oversized_scene_needs_splitting (tests.test_studio.ManifestTests.test_oversized_scene_needs_splitting) ... ok
+test_unknown_engine_rejected (tests.test_studio.ManifestTests.test_unknown_engine_rejected) ... ok
+test_valid_manifest_round_trips (tests.test_studio.ManifestTests.test_valid_manifest_round_trips) ... ok
+test_engine_rules_and_fallbacks (tests.test_studio.VisualDirectorTests.test_engine_rules_and_fallbacks) ... ok
+test_long_beats_split_at_cap (tests.test_studio.VisualDirectorTests.test_long_beats_split_at_cap) ... ok
+test_commons_cc0_http_deed_url_is_canonicalized_safely (tests.test_wikimedia.WikimediaTests.test_commons_cc0_http_deed_url_is_canonicalized_safely) ... ok
+test_commons_download_limit_applies_to_reused_assets (tests.test_wikimedia.WikimediaTests.test_commons_download_limit_applies_to_reused_assets) ... ok
+test_commons_download_verifies_license_and_records_attribution (tests.test_wikimedia.WikimediaTests.test_commons_download_verifies_license_and_records_attribution) ... ok
+test_commons_noncommercial_asset_is_rejected_without_download (tests.test_wikimedia.WikimediaTests.test_commons_noncommercial_asset_is_rejected_without_download) ... ok
+test_schema_version_one_migrates_source_and_asset_licence_columns (tests.test_wikimedia.WikimediaTests.test_schema_version_one_migrates_source_and_asset_licence_columns) ... ok
+test_wikimedia_fetch_rejects_non_wikimedia_host (tests.test_wikimedia.WikimediaTests.test_wikimedia_fetch_rejects_non_wikimedia_host) ... ok
+test_wikipedia_discovery_persists_api_records_and_text_license (tests.test_wikimedia.WikimediaTests.test_wikipedia_discovery_persists_api_records_and_text_license) ... ok
+
+----------------------------------------------------------------------
+Ran 56 tests in 4.068s
+
+OK (skipped=5)

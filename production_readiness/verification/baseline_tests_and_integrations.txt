@@ -1,0 +1,185 @@
+--- integrations ---
+geofactory/agents/groq_client.py:1:"""Optional Groq JSON client; API credentials are never included in errors."""
+geofactory/agents/groq_client.py:10:class GroqGenerationError(RuntimeError):
+geofactory/agents/groq_client.py:16:        raise GroqGenerationError("Set groq_api_key in ignored config.json to use Groq.")
+geofactory/agents/groq_client.py:18:        from groq import Groq
+geofactory/agents/groq_client.py:20:        raise GroqGenerationError(
+geofactory/agents/groq_client.py:21:            "Install the Groq SDK with `pip install -r requirements.txt`."
+geofactory/agents/groq_client.py:24:        client = Groq(api_key=config.groq_api_key, timeout=180, max_retries=1)
+geofactory/agents/groq_client.py:43:        raise GroqGenerationError(
+geofactory/agents/groq_client.py:44:            f"Groq generation failed ({type(exc).__name__}); check the key, model, quota, and network."
+geofactory/agents/groq_client.py:48:        raise GroqGenerationError("Groq returned an empty script response.")
+geofactory/agents/groq_client.py:52:        raise GroqGenerationError("Groq returned malformed JSON.") from exc
+geofactory/agents/groq_client.py:54:        raise GroqGenerationError("Groq response must be a JSON object.")
+geofactory/agents/local_model.py:1:"""Loopback-only Ollama client for optional evidence-conditioned generation."""
+geofactory/agents/local_model.py:44:            f"Local model HTTP error {exc.code}; check Ollama and configured model."
+geofactory/agents/local_model.py:48:            f"Could not connect to Ollama at {config.local_llm_url}: {exc}"
+geofactory/agents/local_model.py:51:        raise LocalModelError("Ollama returned invalid JSON.") from exc
+geofactory/agents/local_model.py:54:        raise LocalModelError("Ollama response did not contain generated text.")
+geofactory/agents/research_agent.py:234:                "licence_url": "https://creativecommons.org/licenses/by-sa/4.0/",
+geofactory/agents/script_agent.py:116:    """Ask the configured Groq or local model for a source-linked draft requiring review."""
+geofactory/app/dashboard.py:236:    print(f"Review dashboard: http://{config.bind_host}:{config.dashboard_port}/")
+geofactory/cli.py:86:        "stock-search", help="Search/download videos through Pexels or Pixabay's official API"
+geofactory/cli.py:95:        "map-build", help="Render a qualified Natural Earth country zoom and thumbnail concepts"
+geofactory/cli.py:244:        "local_llm_url": "http://127.0.0.1:11434",
+geofactory/cli.py:606:            provider = "Groq" if config.groq_api_key.strip() else "local model"
+geofactory/cli.py:611:                f"Wrote evidence-aware draft with {words} words; configure Groq or Ollama "
+geofactory/core/config.py:42:    local_llm_url: str = "http://127.0.0.1:11434"
+geofactory/core/config.py:109:            local_llm_url=str(raw.get("local_llm_url", "http://127.0.0.1:11434")).rstrip("/"),
+geofactory/core/config.py:163:            raise ConfigurationError("Piper needs an existing piper_voice_model path.")
+geofactory/media/asset_manager.py:34:    "Pexels License": "https://www.pexels.com/license/",
+geofactory/media/asset_manager.py:35:    "Pixabay Content License": "https://pixabay.com/service/license-summary/",
+geofactory/media/asset_manager.py:119:        return license_id, f"https://creativecommons.org{expected_path}/"
+geofactory/media/asset_manager.py:126:        return "CC0-1.0", "https://creativecommons.org/publicdomain/zero/1.0/"
+geofactory/media/asset_manager.py:133:        return "Public Domain", "https://creativecommons.org/publicdomain/mark/1.0/"
+geofactory/media/asset_manager.py:453:    """Search and fetch MP4 stock clips through official Pexels/Pixabay video APIs."""
+geofactory/media/asset_manager.py:467:        api_url = "https://api.pexels.com/videos/search?" + urlencode({
+geofactory/media/asset_manager.py:471:            api_url, provider="Pexels", allowed_host="api.pexels.com",
+geofactory/media/asset_manager.py:475:        license_name = "Pexels License"
+geofactory/media/asset_manager.py:479:        api_url = "https://pixabay.com/api/videos/?" + urlencode({
+geofactory/media/asset_manager.py:483:            api_url, provider="Pixabay", allowed_host="pixabay.com"
+geofactory/media/asset_manager.py:486:        license_name = "Pixabay Content License"
+geofactory/media/asset_manager.py:513:            title = str(candidate.get("id", "Pexels stock video"))
+geofactory/media/asset_manager.py:522:            title = str(candidate.get("tags", "Pixabay stock video"))
+geofactory/media/map_animation_engine.py:1:"""Memory-bounded Natural Earth country-map frames and FFmpeg scene segments."""
+geofactory/media/map_animation_engine.py:23:DATASET_NAME = "Natural Earth 1:110m Admin 0 Countries"
+geofactory/media/map_animation_engine.py:27:    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+geofactory/media/map_animation_engine.py:30:DATASET_50M_NAME = "Natural Earth 1:50m Admin 0 Countries"
+geofactory/media/map_animation_engine.py:32:    "https://raw.githubusercontent.com/nvkelso/natural-earth-vector/"
+geofactory/media/map_animation_engine.py:35:DATASET_LICENSE_URL = "https://www.naturalearthdata.com/about/terms-of-use/"
+geofactory/media/map_animation_engine.py:37:QUALIFICATION = "Boundaries follow Natural Earth de facto depiction; disputed status may differ."
+geofactory/media/map_animation_engine.py:85:    raise MapAnimationError("Natural Earth scale must be 50 or 110.")
+geofactory/media/map_animation_engine.py:103:        raise MapAnimationError("Natural Earth download URL is not the approved HTTPS host.")
+geofactory/media/map_animation_engine.py:109:                raise MapAnimationError("Natural Earth download redirected to an unapproved host.")
+geofactory/media/map_animation_engine.py:112:                raise MapAnimationError("Natural Earth country dataset exceeds 20 MiB.")
+geofactory/media/map_animation_engine.py:115:            f"Natural Earth data download returned HTTP {exc.code}."
+geofactory/media/map_animation_engine.py:119:            f"Natural Earth data download failed ({type(exc).__name__})."
+geofactory/media/map_animation_engine.py:124:        raise MapAnimationError("Natural Earth response is not valid UTF-8 GeoJSON.") from exc
+geofactory/media/map_animation_engine.py:132:        raise MapAnimationError("Downloaded file is not the expected Natural Earth dataset.")
+geofactory/media/map_animation_engine.py:185:        raise MapAnimationError(f"Cached Natural Earth GeoJSON is unreadable: {exc}") from exc
+geofactory/media/map_animation_engine.py:192:        raise MapAnimationError("Cached Natural Earth data is not a GeoJSON FeatureCollection.")
+geofactory/media/map_animation_engine.py:259:    raise MapAnimationError(f"Natural Earth has no country feature for ISO A3 {code}.")
+geofactory/media/map_animation_engine.py:543:        raise MapAnimationError("Map scene has no valid Natural Earth download date.") from exc
+geofactory/media/thumbnail_engine.py:406:    qualification = "Natural Earth boundaries; disputed status may differ"
+geofactory/media/thumbnail_engine.py:505:            "qualification": "Natural Earth boundaries; disputed status may differ",
+geofactory/media/thumbnail_maker.py:65:    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{THUMBNAIL_WIDTH}" height="{THUMBNAIL_HEIGHT}" viewBox="0 0 {THUMBNAIL_WIDTH} {THUMBNAIL_HEIGHT}">
+geofactory/media/tts_engine.py:143:            raise TTSError(f"eSpeak NG executable not found: {config.espeak_executable}")
+geofactory/media/tts_engine.py:151:            raise TTSError(f"Piper executable not found: {config.piper_executable}")
+geofactory/media/tts_engine.py:153:            raise TTSError("Piper voice model and verified licence are required.")
+geofactory/media/tts_engine.py:184:            "Install the optional Edge TTS dependency with `pip install -r requirements.txt`."
+geofactory/media/tts_engine.py:197:                f"Edge TTS could not synthesize a chunk using "
+geofactory/media/tts_engine.py:212:                f"Edge TTS audio conversion failed ({converted.returncode}): "
+geofactory/media/tts_engine.py:216:            raise TTSError("Edge TTS returned without producing a playable audio chunk.")
+geofactory/media/tts_engine.py:233:            raise TTSError("Piper needs an existing piper_voice_model path.")
+geofactory/media/visual_builder.py:41:    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">
+geofactory/quality/qa_engine.py:332:                "Generated map scenes have verified segment hashes and Natural Earth dataset metadata.",
+geofactory/studio/__init__.py:3:Engines: Remotion (motion graphics), Blender (3D), Manim (technical),
+geofactory/studio/design_tokens.py:3:Shared by the Remotion templates, Blender scenes, Manim scenes and the
+geofactory/studio/design_tokens.py:31:# Camera movement presets consumed by Remotion (springs), Blender (keyframes)
+geofactory/studio/design_tokens.py:38:    "dolly_orbit": {"kind": "orbit", "degrees": 18},       # Blender 3D dolly
+geofactory/studio/design_tokens.py:39:    "crane_rise": {"kind": "crane", "metres": 6},          # Blender 3D crane
+geofactory/wikimedia.py:15:    "https://github.com/mmunibafatima169-bit/kids-story-automation)"
+geofactory/wikimedia.py:18:    "wikipedia": "https://en.wikipedia.org/w/api.php",
+geofactory/wikimedia.py:19:    "commons": "https://commons.wikimedia.org/w/api.php",
+studio/assemble_sample60.py:5:  1. synthesise narration per scene (Edge TTS, local fallback)
+studio/assemble_sample60.py:14:Blender/Manim segments if present; FFmpeg performs the final assembly.
+studio/blender/mose_barriers.py:1:"""MOSE barrier engineering demonstration — Blender headless scene.
+studio/engines/blender_adapter.py:1:"""Blender 3D engine adapter.
+studio/engines/blender_adapter.py:3:Blender is optional and heavyweight; the adapter detects availability,
+studio/engines/blender_adapter.py:6:Nothing here installs Blender silently — run `python3 -m geofactory.studio.
+studio/engines/blender_adapter.py:20:class BlenderUnavailableError(RuntimeError):
+studio/engines/blender_adapter.py:25:class BlenderStatus:
+studio/engines/blender_adapter.py:32:def status() -> BlenderStatus:
+studio/engines/blender_adapter.py:35:        return BlenderStatus(
+studio/engines/blender_adapter.py:37:            "Blender not on PATH. Linux: download the official tarball from "
+studio/engines/blender_adapter.py:38:            "https://download.blender.org/release/ and add it to PATH; it runs "
+studio/engines/blender_adapter.py:46:    return BlenderStatus(True, exe, version, "ok" if version else "present but failed --version")
+studio/engines/blender_adapter.py:66:        raise BlenderUnavailableError(st.notes)
+studio/engines/blender_adapter.py:69:        raise BlenderUnavailableError("Scene scripts must live in studio/blender/")
+studio/engines/blender_adapter.py:82:        raise BlenderUnavailableError(f"Blender exited {proc.returncode}: {proc.stderr[-400:]}")
+studio/engines/blender_adapter.py:86:        raise BlenderUnavailableError("FFmpeg required to encode Blender frame output")
+studio/engines/blender_adapter.py:93:        raise BlenderUnavailableError(f"Blender frame encode failed: {enc.stderr[-400:]}")
+studio/engines/blender_adapter.py:99:    print("Blender:", "available" if st.available else "not installed")
+studio/engines/manim_adapter.py:1:"""Manim Community engine adapter for technical explanations.
+studio/engines/manim_adapter.py:3:Manim needs Cairo/Pango system libraries; it is optional. This adapter detects
+studio/engines/manim_adapter.py:19:class ManimUnavailableError(RuntimeError):
+studio/engines/manim_adapter.py:24:class ManimStatus:
+studio/engines/manim_adapter.py:31:def status() -> ManimStatus:
+studio/engines/manim_adapter.py:34:        return ManimStatus(
+studio/engines/manim_adapter.py:36:            "Manim CE not on PATH. Install with `pip install manim` plus system "
+studio/engines/manim_adapter.py:45:    return ManimStatus(True, exe, version, "ok" if version else "present but failed --version")
+studio/engines/manim_adapter.py:58:        raise ManimUnavailableError(st.notes)
+studio/engines/manim_adapter.py:61:        raise ManimUnavailableError("Scene files must live in studio/manim/")
+studio/engines/manim_adapter.py:72:        raise ManimUnavailableError(f"Manim exited {proc.returncode}: {proc.stderr[-400:]}")
+studio/engines/manim_adapter.py:75:        raise ManimUnavailableError("Manim finished but produced no scene file")
+studio/engines/manim_adapter.py:82:    print("Manim:", "available" if st.available else "not installed")
+studio/manim/subsidence_graph.py:1:"""Animated subsidence timeline for Venice — Manim CE scene.
+studio/prepare_sample_assets.py:67:            source_page="https://commons.wikimedia.org/wiki/File:Gondolas_in_Venice.webm",
+studio/prepare_sample_assets.py:68:            download_url="https://upload.wikimedia.org/wikipedia/commons/4/46/Gondolas_in_Venice.webm",
+studio/prepare_sample_assets.py:71:            licence_url="https://creativecommons.org/licenses/by-sa/3.0/",
+studio/prepare_sample_assets.py:81:            source_page="https://commons.wikimedia.org/wiki/File:Venise_Panorama_du_Grand_Canal_1896.webm",
+studio/prepare_sample_assets.py:82:            download_url="https://upload.wikimedia.org/wikipedia/commons/e/e8/Venise_Panorama_du_Grand_Canal_1896.webm",
+studio/prepare_sample_assets.py:85:            licence_url="https://creativecommons.org/publicdomain/mark/1.0/",
+studio/remotion/src/theme.ts:26:/** Equirectangular projection helpers for the Natural Earth world map. */
+studio/sample60_facts.json:8:      "url": "https://www.fincosit.it/fincosit/wp-content/uploads/2019/06/glf_mose.pdf",
+studio/sample60_facts.json:17:      "url": "https://www.cedim.kit.edu/download/FDA_VENICE_2019_draft_e.pdf",
+studio/sample60_facts.json:26:      "url": "https://whc.unesco.org/en/list/394/",
+studio/sample60_facts.json:35:      "url": "https://www.bbc.com/future/article/20250324-the-ancient-forest-that-supports-venice",
+--- tests overview ---
+50
+--- current test run (no media generation) ---
+test_config_rejects_non_loopback_dashboard_and_publishing (tests.test_core.ConfigTests.test_config_rejects_non_loopback_dashboard_and_publishing) ... ok
+test_config_uses_local_safe_defaults (tests.test_core.ConfigTests.test_config_uses_local_safe_defaults) ... ok
+test_invalid_transitions_are_rejected (tests.test_core.JobTests.test_invalid_transitions_are_rejected) ... ok
+test_package_change_invalidates_approval (tests.test_core.JobTests.test_package_change_invalidates_approval) ... ok
+test_restart_requeues_processing_but_never_retries_ambiguous_upload (tests.test_core.JobTests.test_restart_requeues_processing_but_never_retries_ambiguous_upload) ... ok
+test_schema_initialization_and_idempotent_creation (tests.test_core.JobTests.test_schema_initialization_and_idempotent_creation) ... ok
+test_rights_gate_registers_known_format_and_license (tests.test_core.RightsTests.test_rights_gate_registers_known_format_and_license) ... ok
+test_rights_gate_rejects_unknown_licences_and_bad_media (tests.test_core.RightsTests.test_rights_gate_rejects_unknown_licences_and_bad_media) ... ok
+test_50m_country_data_download_is_pinned_and_cached (tests.test_map_thumbnail.MapAndThumbnailTests.test_50m_country_data_download_is_pinned_and_cached) ... ok
+test_map_scene_records_dataset_and_rejects_tampering (tests.test_map_thumbnail.MapAndThumbnailTests.test_map_scene_records_dataset_and_rejects_tampering) ... ok
+test_qa_reports_map_and_thumbnail_engine_results_actionably (tests.test_map_thumbnail.MapAndThumbnailTests.test_qa_reports_map_and_thumbnail_engine_results_actionably) ... ok
+test_thumbnail_engine_emits_three_distinct_scored_editable_concepts (tests.test_map_thumbnail.MapAndThumbnailTests.test_thumbnail_engine_emits_three_distinct_scored_editable_concepts) ... ok
+test_video_editor_accepts_verified_generated_map_scenes (tests.test_map_thumbnail.MapAndThumbnailTests.test_video_editor_accepts_verified_generated_map_scenes) ... ok
+test_espeak_generates_measured_audio_and_synchronized_srt (tests.test_media.MediaIntegrationTests.test_espeak_generates_measured_audio_and_synchronized_srt) ... skipped 'eSpeak NG and FFmpeg/FFprobe are required'
+test_ffmpeg_render_contains_video_audio_and_soft_subtitles (tests.test_media.MediaIntegrationTests.test_ffmpeg_render_contains_video_audio_and_soft_subtitles) ... skipped 'eSpeak NG and FFmpeg/FFprobe are required'
+test_nearly_silent_audio_chunk_is_rejected (tests.test_media.MediaIntegrationTests.test_nearly_silent_audio_chunk_is_rejected) ... skipped 'FFmpeg/FFprobe are required'
+test_sentence_chunking_keeps_text_and_bounds_chunks (tests.test_media.MediaIntegrationTests.test_sentence_chunking_keeps_text_and_bounds_chunks) ... ok
+test_thumbnail_is_1280x720_jpeg_over_the_supplied_image (tests.test_media.MediaIntegrationTests.test_thumbnail_is_1280x720_jpeg_over_the_supplied_image) ... skipped 'FFmpeg/FFprobe are required'
+test_video_clips_take_priority_and_background_music_is_mixed (tests.test_media.MediaIntegrationTests.test_video_clips_take_priority_and_background_music_is_mixed) ... skipped 'FFmpeg/FFprobe and eSpeak NG are required'
+test_documented_cli_dry_run_works_without_api_keys (tests.test_pipeline.PipelineTests.test_documented_cli_dry_run_works_without_api_keys) ... ok
+test_local_script_draft_requires_word_count_and_known_claim_ids (tests.test_pipeline.PipelineTests.test_local_script_draft_requires_word_count_and_known_claim_ids) ... ok
+test_offline_demo_generates_package_and_blocks_approval (tests.test_pipeline.PipelineTests.test_offline_demo_generates_package_and_blocks_approval) ... ok
+test_qa_requires_per_claim_human_review_and_synced_ledger (tests.test_pipeline.PipelineTests.test_qa_requires_per_claim_human_review_and_synced_ledger) ... ok
+test_research_ledger_requires_traceable_fact_sources (tests.test_pipeline.PipelineTests.test_research_ledger_requires_traceable_fact_sources) ... ok
+test_subtitle_generation_and_validation (tests.test_pipeline.PipelineTests.test_subtitle_generation_and_validation) ... ok
+test_thumbnail_failure_after_render_returns_job_to_qa_failed (tests.test_pipeline.PipelineTests.test_thumbnail_failure_after_render_returns_job_to_qa_failed) ... ok
+test_worker_processes_a_queued_job_sequentially (tests.test_pipeline.PipelineTests.test_worker_processes_a_queued_job_sequentially) ... ok
+test_api_keys_are_not_in_config_repr_or_missing_key_errors (tests.test_providers.ProviderTests.test_api_keys_are_not_in_config_repr_or_missing_key_errors) ... ok
+test_edge_tts_chunk_is_converted_to_verified_wav (tests.test_providers.ProviderTests.test_edge_tts_chunk_is_converted_to_verified_wav) ... ok
+test_groq_client_returns_json_and_never_logs_credentials (tests.test_providers.ProviderTests.test_groq_client_returns_json_and_never_logs_credentials) ... ok
+test_owner_music_registration_requires_and_records_audio_rights (tests.test_providers.ProviderTests.test_owner_music_registration_requires_and_records_audio_rights) ... ok
+test_pexels_and_pixabay_results_are_registered_as_licensed_video (tests.test_providers.ProviderTests.test_pexels_and_pixabay_results_are_registered_as_licensed_video) ... ok
+test_factual_verifier_catches_conflict_and_unsourced_display (tests.test_studio.AssetAndFactTests.test_factual_verifier_catches_conflict_and_unsourced_display) ... ok
+test_relevant_licensed_footage_scores_above_generic (tests.test_studio.AssetAndFactTests.test_relevant_licensed_footage_scores_above_generic) ... ok
+test_visual_director_penalises_repeated_objective (tests.test_studio.AssetAndFactTests.test_visual_director_penalises_repeated_objective) ... ok
+test_clean_manifest_passes_with_note (tests.test_studio.EditorialQaTests.test_clean_manifest_passes_with_note) ... ok
+test_static_wall_and_reuse_flags (tests.test_studio.EditorialQaTests.test_static_wall_and_reuse_flags) ... ok
+test_overlap_or_out_of_order_rejected (tests.test_studio.ManifestTests.test_overlap_or_out_of_order_rejected) ... ok
+test_oversized_scene_needs_splitting (tests.test_studio.ManifestTests.test_oversized_scene_needs_splitting) ... ok
+test_unknown_engine_rejected (tests.test_studio.ManifestTests.test_unknown_engine_rejected) ... ok
+test_valid_manifest_round_trips (tests.test_studio.ManifestTests.test_valid_manifest_round_trips) ... ok
+test_engine_rules_and_fallbacks (tests.test_studio.VisualDirectorTests.test_engine_rules_and_fallbacks) ... ok
+test_long_beats_split_at_cap (tests.test_studio.VisualDirectorTests.test_long_beats_split_at_cap) ... ok
+test_commons_cc0_http_deed_url_is_canonicalized_safely (tests.test_wikimedia.WikimediaTests.test_commons_cc0_http_deed_url_is_canonicalized_safely) ... ok
+test_commons_download_limit_applies_to_reused_assets (tests.test_wikimedia.WikimediaTests.test_commons_download_limit_applies_to_reused_assets) ... ok
+test_commons_download_verifies_license_and_records_attribution (tests.test_wikimedia.WikimediaTests.test_commons_download_verifies_license_and_records_attribution) ... ok
+test_commons_noncommercial_asset_is_rejected_without_download (tests.test_wikimedia.WikimediaTests.test_commons_noncommercial_asset_is_rejected_without_download) ... ok
+test_schema_version_one_migrates_source_and_asset_licence_columns (tests.test_wikimedia.WikimediaTests.test_schema_version_one_migrates_source_and_asset_licence_columns) ... ok
+test_wikimedia_fetch_rejects_non_wikimedia_host (tests.test_wikimedia.WikimediaTests.test_wikimedia_fetch_rejects_non_wikimedia_host) ... ok
+test_wikipedia_discovery_persists_api_records_and_text_license (tests.test_wikimedia.WikimediaTests.test_wikipedia_discovery_persists_api_records_and_text_license) ... ok
+
+----------------------------------------------------------------------
+Ran 50 tests in 4.573s
+
+OK (skipped=5)

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-11-05",
+  "generated_at": "2026-11-10",
   "sources": [
     {
       "id": "src-mose-ministry",
@@ -15,9 +15,9 @@
       "title": "Flooding in Venice, Italy — Forensic Disaster Analysis",
       "publisher": "CEDIM, Karlsruhe Institute of Technology",
       "url": "https://www.cedim.kit.edu/download/FDA_VENICE_2019_draft_e.pdf",
-      "accessed_at": "2026-11-05",
+      "accessed_at": "2026-11-10",
       "reliability": "scientific",
-      "notes": "Documents 194 cm on 4 November 1966 using Comune di Venezia tide data."
+      "notes": "Defines flood/acqua alta from 80 cm at Punta della Salute; documents 194 cm on 4 November 1966 using Comune di Venezia data."
     },
     {
       "id": "src-unesco-venice",
@@ -27,20 +27,31 @@
       "accessed_at": "2026-11-05",
       "reliability": "primary",
       "notes": "UNESCO property description: Venice is spread over 118 small islands."
+    },
+    {
+      "id": "src-bbc-foundations-2025",
+      "title": "Mud, water and wood: The system that kept a 1604-year-old city afloat",
+      "publisher": "BBC Future (reporting research from CNR, University of Padova and University of Venice experts)",
+      "url": "https://www.bbc.com/future/article/20250324-the-ancient-forest-that-supports-venice",
+      "accessed_at": "2026-11-10",
+      "reliability": "research-lead",
+      "notes": "Published 2025-03-26. Reports slow anaerobic bacterial attack and the resilient wood-water-soil system; exact pile total unknown."
     }
   ],
   "claims": [
     {
       "id": "fact-acqua-threshold",
       "quantity": "acqua_alta_reference_display_cm",
-      "value": 90,
+      "value": 80,
       "unit": "cm",
       "narration_value": null,
-      "display_value": 90,
-      "source_ids": ["src-kit-venice-2019"],
+      "display_value": 80,
+      "source_ids": [
+        "src-kit-venice-2019"
+      ],
       "verified": true,
       "display_label": "ACQUA ALTA — reference threshold",
-      "uncertainty": "This is a labelled reference threshold in the infographic, not a claim that every event peaks at 90 cm."
+      "uncertainty": "CEDIM classifies +80 to +109 cm as flood at the Punta della Salute reference point. This is a threshold, not an event peak."
     },
     {
       "id": "fact-1966-peak",
@@ -49,7 +60,9 @@
       "unit": "cm",
       "narration_value": 194,
       "display_value": 194,
-      "source_ids": ["src-kit-venice-2019"],
+      "source_ids": [
+        "src-kit-venice-2019"
+      ],
       "verified": true,
       "display_label": "1966 FLOOD — Punta della Salute datum",
       "uncertainty": "194 cm uses Venice's Punta della Salute datum; values against mean sea level differ."
@@ -61,7 +74,9 @@
       "unit": "cm",
       "narration_value": null,
       "display_value": 300,
-      "source_ids": ["src-mose-ministry"],
+      "source_ids": [
+        "src-mose-ministry"
+      ],
       "verified": true,
       "display_label": "MOSE DESIGN LIMIT — 3 m",
       "uncertainty": "A stated design protection level, not a measured Venice flood."
@@ -73,7 +88,9 @@
       "unit": "gates",
       "narration_value": 78,
       "display_value": 78,
-      "source_ids": ["src-mose-ministry"],
+      "source_ids": [
+        "src-mose-ministry"
+      ],
       "verified": true,
       "display_label": "78 HOLLOW STEEL GATES",
       "uncertainty": "Four barrier rows across three lagoon inlets."
@@ -85,7 +102,9 @@
       "unit": "islands",
       "narration_value": null,
       "display_value": 118,
-      "source_ids": ["src-unesco-venice"],
+      "source_ids": [
+        "src-unesco-venice"
+      ],
       "verified": true,
       "display_label": "118 ISLANDS",
       "uncertainty": "UNESCO describes the World Heritage city as spread over 118 small islands; narration conservatively says more than one hundred."
@@ -95,6 +114,26 @@
     "observed_intermediate_value": 241,
     "scene": "S4Stats",
     "finding": "241 was not a source value. It was a transient frame in a 0-to-300 spring count-up toward the verified 300 cm design limit.",
-    "v2_policy": "Animate bar height only. Display the verified final number throughout and label 300 cm explicitly as a design limit."
+    "v2_policy": "Animate bar height only. Display the verified final number throughout and label 300 cm explicitly as a design limit.",
+    "v3_policy": "Use 80 cm threshold, fixed source values, safe numeric-label margins, and information-bearing motion through settled chart frames."
+  },
+  "narrative_review": {
+    "foundations": {
+      "source_ids": [
+        "src-bbc-foundations-2025"
+      ],
+      "status": "verified_with_qualification",
+      "v3_text": "Waterlogged, oxygen-poor mud preserves the piles, but anaerobic bacteria still attack wood. Slow decay and the wood-water-soil system maintain stability.",
+      "prohibited_oversimplifications": [
+        "timber never rotted",
+        "wood simply turns to stone"
+      ]
+    },
+    "mose_operation": {
+      "source_ids": [
+        "src-mose-ministry"
+      ],
+      "v3_text": "The barrier can hold back the Adriatic during closures; this is not a guarantee of permanent or universal protection."
+    }
   }
 }

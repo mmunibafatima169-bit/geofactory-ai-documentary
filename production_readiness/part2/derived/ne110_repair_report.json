@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "dataset_name": "Natural Earth Admin 0 Countries",
+  "dataset_version": "5.1.1",
+  "licence": "Public Domain",
+  "licence_url": "https://www.naturalearthdata.com/about/terms-of-use/",
+  "source_url": "https://github.com/nvkelso/natural-earth-vector",
+  "source_file": "studio/remotion/public/ne110.geojson",
+  "source_sha256": "6866c877d39cba9c357620878839b336d569f8c662d3cfab4cb1dbe2d39c977f",
+  "derived_file": "production_readiness/part2/derived/ne110_validated.geojson",
+  "derived_sha256": "f19291e22c081d3a82dcc2b5dee3e09f9a3cb03678d5fb5d45b2ce4852ebbc31",
+  "crs": "EPSG:4326",
+  "feature_count_before_after": [
+    177,
+    177
+  ],
+  "invalid_before_after": [
+    2,
+    0
+  ],
+  "repairs": [
+    {
+      "feature_index": 4,
+      "feature_name": "United States of America",
+      "before_type": "MultiPolygon",
+      "after_type": "MultiPolygon",
+      "invalid_reason": "Self-intersection[-140.986000000796 69.7119995456579]",
+      "relative_area_change": 5.0649856997555725e-15,
+      "method": "Shapely make_valid; retain polygonal parts only"
+    },
+    {
+      "feature_index": 14,
+      "feature_name": "Sudan",
+      "before_type": "Polygon",
+      "after_type": "MultiPolygon",
+      "invalid_reason": "Self-intersection[33.9633927979515 9.46428502886449]",
+      "relative_area_change": 1.0048789891503534e-09,
+      "method": "Shapely make_valid; retain polygonal parts only"
+    }
+  ],
+  "source_modified": false,
+  "notice": "Topological repair only; disputed borders and source attributes are not editorially normalized."
+}

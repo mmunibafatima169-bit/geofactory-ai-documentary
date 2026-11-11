@@ -1,0 +1,31 @@
+--- system libraries ---
+/bin/bash: line 1: ldconfig: command not found
+--- build tools ---
+gcc (Debian 12.2.0-14+deb12u1) 12.2.0
+/bin/bash: line 1: pkg-config: command not found
+/bin/bash: line 1: pkg-config: command not found
+--- audio / tts ---
+--- installed python module probes ---
+bpy False
+manim False
+osgeo False
+geopandas False
+shapely False
+pyproj False
+rasterio False
+fiona False
+matplotlib False
+scipy False
+soundfile False
+librosa False
+piper False
+cv2 False
+skimage False
+cairosvg False
+--- apt candidates (read-only) ---
+ffmpeg:
+  Installed: (none)
+  Candidate: (none)
+  Version table:
+--- privileges ---
+sudo_exit=0

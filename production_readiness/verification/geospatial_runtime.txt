@@ -1,0 +1,16 @@
+geopandas 1.2.0
+shapely 2.2.0
+pyproj 3.7.2
+rasterio 1.4.4
+fiona 1.10.1
+matplotlib 3.10.8
+pandas 3.1.1
+vector_read_rows 177
+vector_crs EPSG:4326
+valid_geometries 175 of 177
+invalid_geometries 2
+reprojected_crs EPSG:3857
+coordinate_transform (0.0, 5621521.486192066)
+Traceback (most recent call last):
+  File "<stdin>", line 12, in <module>
+IndexError: too many indices for array: array is 1-dimensional, but 2 were indexed
