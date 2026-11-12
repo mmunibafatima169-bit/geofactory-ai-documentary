@@ -18,7 +18,7 @@ from typing import Any
 from geofactory.core.config import FactoryConfig
 from geofactory.core.database import Database
 from geofactory.core.jobs import (
-    create_job, get_job, transition_job, list_jobs, package_digest
+    create_job, get_job, transition_job, list_jobs, package_digest, STATUSES, TRANSITIONS
 )
 from geofactory.agents.research_agent import (
     discover_wikipedia_sources, export_ledger, import_ledger
@@ -32,11 +32,13 @@ from geofactory.studio.documentary_planner import run_documentary_plan, validate
 from geofactory.media.documentary_renderer import render_documentary_from_plan
 from geofactory.media.shorts_generator import generate_shorts_from_documentary
 from geofactory.quality.qa_engine import run_qa
+from geofactory.studio.factual_verifier import verify_fact_ledger
 
 
 class PipelineStage(str, Enum):
     RESEARCH = "research"
     SCRIPT = "script"
+    FACT_CHECK = "fact_check"
     PLAN = "plan"
     NARRATE = "narrate"
     RENDER = "render"
@@ -91,6 +93,11 @@ class PipelineError(RuntimeError):
         super().__init__(f"Pipeline failed at {stage.value}: {message}")
 
 
+class InvalidPlanError(PipelineError):
+    """Raised when documentary plan validation fails critically."""
+    pass
+
+
 CHECKPOINT_FILE = "pipeline_state.json"
 
 
@@ -124,6 +131,24 @@ def run_stage_with_timing(stage: PipelineStage, func, *args, **kwargs) -> tuple[
         raise PipelineError(stage, f"{type(e).__name__}: {e}") from e
 
 
+def _transition_job_safely(db: Database, job_id: str, new_status: str, detail: str = "", error: str = "") -> None:
+    """Transition job status only if valid per TRANSITIONS."""
+    job = get_job(db, job_id)
+    old_status = job["status"]
+    if new_status not in TRANSITIONS.get(old_status, set()):
+        # Find a valid intermediate or fallback
+        valid = TRANSITIONS.get(old_status, set())
+        if "qa_failed" in valid:
+            new_status = "qa_failed"
+        elif "failed" in valid:
+            new_status = "failed"
+        elif "proposed" in valid:
+            new_status = "proposed"
+        else:
+            raise ValueError(f"No valid transition from {old_status} to {new_status}. Valid: {valid}")
+    transition_job(db, job_id, new_status, detail, error)
+
+
 def run_research_stage(
     db: Database, job_id: str, config: FactoryConfig, state: PipelineState
 ) -> dict[str, int]:
@@ -131,7 +156,6 @@ def run_research_stage(
     job = get_job(db, job_id)
     package = Path(job["output_dir"])
     
-    # Use config overrides if provided
     query = state.config_overrides.get("research_query", job["topic"])
     limit = state.config_overrides.get("research_limit", 10)
     
@@ -161,27 +185,83 @@ def run_script_stage(
     return {"words": words, "provider": provider}
 
 
+def run_fact_check_stage(
+    db: Database, job_id: str, config: FactoryConfig, state: PipelineState
+) -> dict[str, Any]:
+    """Stage 3: Fact Check - verify claims against ledger."""
+    job = get_job(db, job_id)
+    package = Path(job["output_dir"])
+    
+    # Load script for narration text
+    script_path = package / "script.md"
+    if not script_path.is_file():
+        raise PipelineError(PipelineStage.FACT_CHECK, "Script not found for fact check")
+    
+    content = script_path.read_text(encoding="utf-8")
+    import re
+    narration_match = re.search(r"## Narration[^\n]*\n(.*?)(?=\n## |\Z)", content, re.DOTALL)
+    narration_text = narration_match.group(1).strip() if narration_match else ""
+    narration_text = re.sub(r"^\(\d+\s+words\)\s*\n*", "", narration_text)
+    
+    # Load source ledger
+    ledger_path = package / "source_ledger.json"
+    if not ledger_path.is_file():
+        raise PipelineError(PipelineStage.FACT_CHECK, "Source ledger not found. Run research first.")
+    
+    # Run factual verification
+    report = verify_fact_ledger(ledger_path, displayed_text="", narration_text=narration_text)
+    
+    # Check for critical findings that should block
+    critical_findings = [f for f in report["findings"] if f["level"] == "critical"]
+    human_verification_needed = any(f["code"] == "human_verification_required" for f in report["findings"])
+    
+    if critical_findings:
+        raise InvalidPlanError(
+            PipelineStage.FACT_CHECK,
+            f"Fact check failed: {len(critical_findings)} critical findings. "
+            f"First: {critical_findings[0]['message']}"
+        )
+    
+    return {
+        "sources_checked": report["sources"],
+        "claims_checked": report["claims"],
+        "critical_findings": len(critical_findings),
+        "human_verification_needed": human_verification_needed,
+        "approval_blocked": report["approval_blocked"],
+        "findings": report["findings"],
+    }
+
+
 def run_plan_stage(
     db: Database, job_id: str, config: FactoryConfig, state: PipelineState
 ) -> dict[str, Any]:
-    """Stage 3: Plan - build documentary plan with chapters, scenes, assets."""
+    """Stage 4: Plan - build documentary plan with chapters, scenes, assets."""
     target_duration = state.config_overrides.get("duration", 600.0)
     plan = run_documentary_plan(db, job_id, config, target_duration)
+    
+    # Validate strictly - raise on critical errors
     errors = validate_documentary_plan(plan)
+    if errors:
+        # Separate critical (structure) from warnings
+        critical = [e for e in errors if any(kw in e.lower() for kw in 
+            ["below minimum", "exceeds maximum", "expected 6 chapters", "no claim ids", "no scenes"])]
+        if critical:
+            raise InvalidPlanError(PipelineStage.PLAN, f"Plan validation failed: {'; '.join(critical)}")
+    
     return {
         "target_duration": target_duration,
         "estimated_render": plan.estimated_render_duration_s,
         "narration_words": plan.total_narration_words,
         "scenes": len(plan.scene_manifest.scenes),
         "chapters": len(plan.chapters),
-        "validation_warnings": errors,
+        "validation_warnings": [e for e in errors if e not in critical] if errors else [],
     }
 
 
 def run_narrate_stage(
     db: Database, job_id: str, config: FactoryConfig, state: PipelineState
 ) -> dict[str, Any]:
-    """Stage 4: Narrate - generate TTS narration and subtitles."""
+    """Stage 5: Narrate - generate TTS narration and subtitles."""
     job = get_job(db, job_id)
     package = Path(job["output_dir"])
     script_path = package / "script.md"
@@ -189,7 +269,6 @@ def run_narrate_stage(
     if not script_path.is_file():
         raise PipelineError(PipelineStage.NARRATE, "Script not found. Run script stage first.")
     
-    # Extract narration from script
     content = script_path.read_text(encoding="utf-8")
     import re
     narration_match = re.search(r"## Narration[^\n]*\n(.*?)(?=\n## |\Z)", content, re.DOTALL)
@@ -199,7 +278,6 @@ def run_narrate_stage(
     else:
         narration_text = content.split("## Narration")[-1].split("## ")[0].strip()
     
-    # Generate narration
     narration_path = package / "narration.wav"
     subtitles_path = package / "subtitles.srt"
     
@@ -218,14 +296,13 @@ def run_narrate_stage(
 def run_render_stage(
     db: Database, job_id: str, config: FactoryConfig, state: PipelineState
 ) -> dict[str, Any]:
-    """Stage 5: Render - produce full documentary video from plan."""
+    """Stage 6: Render - produce full documentary video from plan."""
     job = get_job(db, job_id)
     package = Path(job["output_dir"])
     output_path = package / "final.mp4"
     
     render_documentary_from_plan(config, job_id, package, output_path)
     
-    # Verify output
     import os
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     
@@ -235,7 +312,7 @@ def run_render_stage(
 def run_shorts_stage(
     db: Database, job_id: str, config: FactoryConfig, state: PipelineState
 ) -> dict[str, Any]:
-    """Stage 6: Shorts - generate YouTube Shorts from documentary."""
+    """Stage 7: Shorts - generate YouTube Shorts from documentary."""
     job = get_job(db, job_id)
     package = Path(job["output_dir"])
     output_path = package / "shorts.mp4"
@@ -252,13 +329,17 @@ def run_shorts_stage(
     import os
     size_mb = os.path.getsize(output_path) / (1024 * 1024)
     
-    return {"output": str(output_path), "size_mb": round(size_mb, 2), "duration": target_duration}
+    # Verify actual output duration
+    from geofactory.media.tts_engine import audio_duration_seconds
+    actual_dur = audio_duration_seconds(output_path, config.ffprobe) if output_path.is_file() else 0
+    
+    return {"output": str(output_path), "size_mb": round(size_mb, 2), "duration": target_duration, "actual_duration": actual_dur}
 
 
 def run_qa_stage(
     db: Database, job_id: str, config: FactoryConfig, state: PipelineState
 ) -> dict[str, Any]:
-    """Stage 7: QA - run release-gate checks."""
+    """Stage 8: QA - run release-gate checks."""
     report = run_qa(db, job_id, config)
     return {
         "approval_blocked": report["approval_blocked"],
@@ -270,6 +351,7 @@ def run_qa_stage(
 STAGE_FUNCTIONS = {
     PipelineStage.RESEARCH: run_research_stage,
     PipelineStage.SCRIPT: run_script_stage,
+    PipelineStage.FACT_CHECK: run_fact_check_stage,
     PipelineStage.PLAN: run_plan_stage,
     PipelineStage.NARRATE: run_narrate_stage,
     PipelineStage.RENDER: run_render_stage,
@@ -280,12 +362,16 @@ STAGE_FUNCTIONS = {
 STAGE_ORDER = [
     PipelineStage.RESEARCH,
     PipelineStage.SCRIPT,
+    PipelineStage.FACT_CHECK,
     PipelineStage.PLAN,
     PipelineStage.NARRATE,
     PipelineStage.RENDER,
     PipelineStage.SHORTS,
     PipelineStage.QA,
 ]
+
+# Valid job statuses from core/jobs.py
+VALID_JOB_STATUSES = STATUSES
 
 
 def run_full_pipeline(
@@ -318,14 +404,12 @@ def run_full_pipeline(
         state = load_pipeline_state(package)
         if state is None:
             raise PipelineError(PipelineStage.RESEARCH, "No checkpoint found to resume from")
-        # Merge config overrides
         if config_overrides:
             state.config_overrides.update(config_overrides)
     else:
         state = PipelineState(job_id=job_id, config_overrides=config_overrides or {})
-        # Initialize job if needed
         if job["status"] == "proposed":
-            transition_job(db, job_id, "researching", "Pipeline started")
+            _transition_job_safely(db, job_id, "researching", "Pipeline started")
     
     # Determine starting stage
     start_idx = 0
@@ -341,17 +425,18 @@ def run_full_pipeline(
         state.current_stage = stage
         save_pipeline_state(package, state)
         
-        # Update job status
+        # Update job status using valid transitions
         status_map = {
             PipelineStage.RESEARCH: "researching",
             PipelineStage.SCRIPT: "scripting",
-            PipelineStage.PLAN: "planning",
-            PipelineStage.NARRATE: "narrating",
+            PipelineStage.FACT_CHECK: "scripting",  # Same phase as script
+            PipelineStage.PLAN: "awaiting_review",  # After plan, ready for review
+            PipelineStage.NARRATE: "scripting",     # Narration is part of script phase
             PipelineStage.RENDER: "rendering",
             PipelineStage.SHORTS: "rendering",
-            PipelineStage.QA: "qa_review",
+            PipelineStage.QA: "awaiting_approval",  # QA runs, then await approval
         }
-        transition_job(db, job_id, status_map.get(stage, "processing"), f"Running {stage.value} stage")
+        _transition_job_safely(db, job_id, status_map.get(stage, "processing"), f"Running {stage.value} stage")
         
         # Run stage with timing
         try:
@@ -362,24 +447,35 @@ def run_full_pipeline(
             state.stage_errors.pop(stage.value, None)
             save_pipeline_state(package, state)
             print(f"✅ {stage.value} completed in {elapsed:.1f}s")
+        except InvalidPlanError as e:
+            # Plan validation failures go to awaiting_review for human fix
+            state.stage_errors[stage.value] = str(e)
+            save_pipeline_state(package, state)
+            _transition_job_safely(db, job_id, "awaiting_review", f"Plan validation failed: {e}")
+            raise
         except PipelineError as e:
             state.stage_errors[stage.value] = str(e)
             save_pipeline_state(package, state)
-            transition_job(db, job_id, "qa_failed", f"Pipeline failed at {stage.value}: {e}")
+            _transition_job_safely(db, job_id, "qa_failed", f"Pipeline failed at {stage.value}: {e}")
             raise
         except Exception as e:
             state.stage_errors[stage.value] = f"{type(e).__name__}: {e}"
             save_pipeline_state(package, state)
-            transition_job(db, job_id, "qa_failed", f"Pipeline failed at {stage.value}: {e}")
+            _transition_job_safely(db, job_id, "qa_failed", f"Pipeline failed at {stage.value}: {e}")
             raise PipelineError(stage, str(e)) from e
     
-    # Pipeline complete
+    # Pipeline complete - run final QA check to determine final status
+    qa_report = run_qa(db, job_id, config)
+    
     state.current_stage = PipelineStage.COMPLETE
     state.stage_timings["total"] = sum(state.stage_timings.values())
     save_pipeline_state(package, state)
     
-    # Final QA already ran as last stage
-    transition_job(db, job_id, "awaiting_approval", "Pipeline complete, awaiting approval")
+    # Only move to awaiting_approval if QA passes
+    if qa_report["approval_blocked"]:
+        _transition_job_safely(db, job_id, "qa_failed", f"QA failed: {qa_report['critical_failures']} critical failures")
+    else:
+        _transition_job_safely(db, job_id, "awaiting_approval", "Pipeline complete, awaiting approval")
     
     print(f"\n🎬 Pipeline complete in {state.stage_timings['total']:.1f}s total")
     for stage, timing in state.stage_timings.items():

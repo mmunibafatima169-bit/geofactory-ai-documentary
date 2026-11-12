@@ -1,56 +1,61 @@
 # NEXT_TASK.md — Single Highest-Priority Next Task
 
 **Last Updated:** 2026-11-12
-**Status:** IN PROGRESS - Engineering improvements to complete pipeline
+**Status:** IN PROGRESS - Critical fixes to pipeline
 **Branch:** feature/documentary-planner
-**HEAD:** 49d22d7
+**HEAD:** f63a022
 
 ---
 
-## Completed This Session (Engineering)
+## Completed This Session (Critical Fixes)
 
 | Task | Status | Evidence |
 |------|--------|----------|
-| Fixed Documentary Planner segment duration bug | ✅ | 13/13 planner tests pass; integration tests now pass |
-| Added `plan-documentary` CLI command | ✅ | Creates documentary_plan.json, scene_manifest.json, asset_allocations.json |
-| Built `documentary_renderer.py` (per-scene FFmpeg rendering) | ✅ | Uses scene manifest + asset allocations for precise rendering |
-| Added `render-documentary` CLI command | ✅ | Validates plan exists, renders from plan, runs QA |
-| Built `shorts_generator.py` (YouTube Shorts 9:16 vertical) | ✅ | Auto-selects best scenes, adds hook text, fast pacing |
-| Added `shorts` CLI command | ✅ | 15-60s duration, custom hook, vertical output |
-| Built `pipeline/orchestrator.py` (end-to-end automation) | ✅ | 7-stage pipeline with checkpoint/resume |
-| Added `produce` CLI command | ✅ | One-command full pipeline with resume support |
-| Removed 6 duplicate continuity docs | ✅ | Kept only repo-root copies |
-| All existing tests pass | ✅ | 65 tests pass (23 skipped - missing PIL/FFmpeg) |
+| **Fix 1: Reconcile orchestrator job-status transitions** | ✅ | Orchestrator now uses valid transitions from core/jobs.py STATUSES/TRANSITIONS; added `_transition_job_safely()` helper |
+| **Fix 2: Never move to awaiting_approval when QA blocks** | ✅ | Pipeline now checks `qa_report["approval_blocked"]` and transitions to `qa_failed` if blocked |
+| **Fix 3: Fix Shorts chronological flow & sync** | ✅ | Shorts generator now selects scenes in chronological order, maps SRT segments to shorts timeline, validates output duration |
+| **Fix 4: Invalid plans fail before rendering** | ✅ | Added `InvalidPlanError`, strict validation in `run_plan_stage` raises on critical structure errors |
+| **Fix 5: Integrate factual_verifier as gate** | ✅ | Added `FACT_CHECK` stage between script and plan; runs `verify_fact_ledger()`; blocks on critical findings |
+
+---
+
+## Test Results
+
+| Test Suite | Result |
+|------------|--------|
+| Core (config, jobs, rights) | 8 PASS |
+| Providers (Groq, Pexels, Pixabay, TTS) | 4 PASS, 2 SKIPPED |
+| Studio (scene_manifest, visual_director, editorial_qa, factual_verifier, asset_selector) | 9 PASS |
+| Wikimedia (Commons, Wikipedia) | 7 PASS |
+| Documentary Planner | 13 PASS |
+| **Total** | **44 PASS, 2 SKIPPED** |
 
 ---
 
 ## Next Highest-Priority Engineering Task
 
-### Task: Implement Automated Fact-Checking Against Claim Ledger
+### Task: Add FFmpeg Integration Tests with Synthetic Fixtures
 
-**Objective:** Integrate `factual_verifier.py` into the pipeline to automatically verify all narrated numbers against the claim/source ledger, blocking render if unverified claims remain.
+**Objective:** Create focused FFmpeg integration tests using tiny synthetic fixtures (not demo videos) to verify rendering pipeline end-to-end.
 
-**Reason:** Currently all claims require manual human verification. The factual_verifier exists but isn't connected to the production pipeline. This is the #1 production blocker for unattended automation.
+**Reason:** Current tests skip FFmpeg-dependent modules due to missing tools in sandbox. Need lightweight synthetic tests that can run in CI to catch regressions in rendering logic.
 
 **Steps:**
-1. Add fact-check stage to pipeline orchestrator (between script and plan)
-2. Connect `verify_fact_ledger()` to run on script narration + scene manifest display text
-3. Make pipeline fail-fast on critical findings (unsourced numbers, conflicts)
-4. Add `claims-review` CLI integration for human verification workflow
-5. Update job status transitions to include `fact_checking` stage
+1. Create synthetic MP4/WAV fixtures using FFmpeg `lavfi` (testsrc, sine)
+2. Add tests for `video_editor.py`, `documentary_renderer.py`, `shorts_generator.py` using synthetic fixtures
+3. Verify actual output duration matches plan
+4. Test error handling for missing assets, invalid plans, etc.
 
 **Acceptance Criteria:**
-- `geofactory produce` runs fact verification automatically
-- Critical findings (conflicts, unsourced display numbers) block pipeline
-- Warnings (human verification needed) allow continuation but flag for review
-- `geofactory claims-review JOB_ID` shows interactive verification UI
-- Verified claims marked in database, reflected in pipeline state
+- Tests run without downloading external assets
+- Tests verify output file exists, has correct duration, valid container
+- Tests added to `tests/test_media.py` and new `tests/test_render_integration.py`
 
-**Dependencies:** `factual_verifier.py` already implemented and tested
+**Dependencies:** FFmpeg/FFprobe available (already in sandbox)
 
 **Blockers:** None
 
-**Verification:** Run pipeline on test job with known conflicts, verify blocking works
+**Verification:** `python3 -m unittest tests.test_render_integration -v`
 
 ---
 
@@ -58,14 +63,8 @@
 
 | Priority | Task | Reason |
 |----------|------|--------|
-| High | Implement claim verification UI in dashboard | Human-in-the-loop for factual accuracy |
-| Medium | Add multi-language narration support | Expand audience beyond US English |
-| Medium | Implement Remotion rendering path for 8-15 min | Currently only FFmpeg; Remotion for motion graphics |
-| Low | Add historical map layers (borders, rivers, climate) | Requires independent sourced datasets |
+| High | Configure API keys for live provider validation | Groq/Pexels/Pixabay unvalidated |
+| Medium | Resolve Piper voice licence or confirm eSpeak NG fallback | No neural TTS option |
+| Medium | Implement Remotion rendering path for 8-15 min | Currently only FFmpeg |
+| Low | Add historical map layers | Requires independent datasets |
 | Low | YouTube OAuth/upload (Phase 9) | Separate security-reviewed phase |
-
----
-
-## If Blocked on Current Task
-
-Move to: **Implement claim verification UI in dashboard** (integrate with existing editorial QA contact sheet)

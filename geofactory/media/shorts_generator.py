@@ -3,6 +3,7 @@ YouTube Shorts Generator: Creates 15-60 second vertical Shorts from documentary 
 
 Uses the documentary plan's scene manifest and asset allocations to create
 engaging vertical clips (9:16) with fast pacing, captions, and hook-driven structure.
+Preserves chronological story flow and synchronizes narration/subtitles.
 """
 
 from __future__ import annotations
@@ -37,11 +38,13 @@ class ShortsPlan:
     """Plan for a single Short."""
     title: str
     hook_text: str
-    scenes: list[dict[str, Any]]  # Subset of documentary scenes, re-timed
+    scenes: list[dict[str, Any]]  # Subset of documentary scenes in CHRONOLOGICAL order
     total_duration: float
     narration_path: Path
     subtitles_path: Path
     music_path: Path | None = None
+    # Mapping from shorts scene to original documentary scene for narration sync
+    scene_mapping: list[dict[str, Any]] = None
 
 
 def load_documentary_plan(package_dir: Path) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -118,6 +121,126 @@ def _package_map_scenes(package_dir: Path) -> list[Path]:
     return scenes
 
 
+def _extract_srt_segments(srt_path: Path) -> list[dict[str, Any]]:
+    """Parse SRT file into segments with timing and text."""
+    content = srt_path.read_text(encoding="utf-8")
+    segments = []
+    
+    blocks = content.strip().split("\n\n")
+    for block in blocks:
+        lines = block.strip().split("\n")
+        if len(lines) >= 3:
+            # Parse timecode line (e.g., "00:00:05,000 --> 00:00:10,000")
+            time_line = lines[1]
+            if "-->" in time_line:
+                start_str, end_str = time_line.split("-->")
+                start_s = _parse_srt_time(start_str.strip())
+                end_s = _parse_srt_time(end_str.strip())
+                text = " ".join(lines[2:])
+                segments.append({
+                    "start_s": start_s,
+                    "end_s": end_s,
+                    "duration": end_s - start_s,
+                    "text": text,
+                })
+    return segments
+
+
+def _parse_srt_time(time_str: str) -> float:
+    """Parse SRT time format HH:MM:SS,mmm to seconds."""
+    time_str = time_str.replace(",", ".")
+    parts = time_str.split(":")
+    hours = int(parts[0])
+    minutes = int(parts[1])
+    seconds = float(parts[2])
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def _build_subtitle_segments_for_shorts(
+    srt_segments: list[dict[str, Any]],
+    shorts_scenes: list[dict[str, Any]],
+    doc_scenes: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """
+    Build subtitle segments for Shorts by mapping documentary narration to shorts timeline.
+    Returns list of {start_s, end_s, text} relative to Shorts timeline.
+    """
+    if not srt_segments or not shorts_scenes:
+        return []
+    
+    # Create mapping from documentary scene to its narration text
+    doc_scene_narration = {}
+    for scene in doc_scenes:
+        doc_scene_narration[scene["scene_id"]] = {
+            "text": scene.get("narration", ""),
+            "start_s": scene["start_s"],
+            "end_s": scene["end_s"],
+        }
+    
+    shorts_subtitles = []
+    
+    for shorts_scene in shorts_scenes:
+        doc_scene_id = shorts_scene.get("source_scene_id", shorts_scene["scene_id"])
+        doc_narration = doc_scene_narration.get(doc_scene_id, {"text": "", "start_s": 0, "end_s": 0})
+        
+        # Find SRT segments that fall within this documentary scene's time range
+        scene_start = doc_narration["start_s"]
+        scene_end = doc_narration["end_s"]
+        scene_text = doc_narration["text"]
+        
+        # Match SRT segments to this scene
+        matching_segments = [
+            seg for seg in srt_segments
+            if seg["start_s"] >= scene_start - 0.5 and seg["end_s"] <= scene_end + 0.5
+        ]
+        
+        if matching_segments:
+            # Map to shorts timeline
+            shorts_start = shorts_scene["shorts_start"]
+            shorts_end = shorts_scene["shorts_end"]
+            shorts_dur = shorts_end - shorts_start
+            doc_dur = scene_end - scene_start
+            
+            if doc_dur > 0:
+                for seg in matching_segments:
+                    # Proportionally map timing
+                    rel_start = (seg["start_s"] - scene_start) / doc_dur
+                    rel_end = (seg["end_s"] - scene_start) / doc_dur
+                    shorts_subtitles.append({
+                        "start_s": shorts_start + rel_start * shorts_dur,
+                        "end_s": shorts_start + rel_end * shorts_dur,
+                        "text": seg["text"],
+                    })
+        elif scene_text:
+            # Fallback: create single subtitle for the whole scene
+            shorts_subtitles.append({
+                "start_s": shorts_scene["shorts_start"],
+                "end_s": shorts_scene["shorts_end"],
+                "text": scene_text,
+            })
+    
+    return shorts_subtitles
+
+
+def _write_shorts_srt(subtitles: list[dict[str, Any]], output_path: Path) -> None:
+    """Write subtitle segments to SRT file."""
+    lines = []
+    for i, seg in enumerate(subtitles, 1):
+        start_str = _format_srt_time(seg["start_s"])
+        end_str = _format_srt_time(seg["end_s"])
+        lines.append(f"{i}\n{start_str} --> {end_str}\n{seg['text']}\n")
+    output_path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _format_srt_time(seconds: float) -> str:
+    """Format seconds to SRT time format HH:MM:SS,mmm."""
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    secs = seconds % 60
+    millis = int((secs - int(secs)) * 1000)
+    return f"{hours:02d}:{minutes:02d}:{int(secs):02d},{millis:03d}"
+
+
 def create_shorts_plan(
     manifest: dict[str, Any],
     allocations: dict[str, list[dict]],
@@ -129,8 +252,8 @@ def create_shorts_plan(
     """
     Create a Shorts plan from the documentary manifest.
     
-    Selects the most engaging scenes (opening hook, key visual moments, conclusion)
-    and re-times them for vertical fast-paced format.
+    Selects scenes in CHRONOLOGICAL order to preserve story flow,
+    taking a contiguous segment from the documentary's narrative arc.
     """
     scenes = manifest.get("scenes", [])
     if not scenes:
@@ -139,12 +262,11 @@ def create_shorts_plan(
     if not MIN_SHORTS_DURATION <= target_duration <= MAX_SHORTS_DURATION:
         raise ShortsRenderError(f"Target duration must be {MIN_SHORTS_DURATION}-{MAX_SHORTS_DURATION}s")
     
-    # Score scenes for Shorts suitability
+    # Score scenes for Shorts suitability (but we'll pick in chronological order)
     scored_scenes = []
     for scene in scenes:
         score = 0
         obj = scene.get("visual_objective", "")
-        # Prioritize: cold_open, map_zoom, engineering_demo, comparison_montage, closing_beat
         if obj in ("cold_open", "map_zoom", "map_context"):
             score += 30
         elif obj in ("engineering_demo", "comparison_montage", "data_chart"):
@@ -152,18 +274,16 @@ def create_shorts_plan(
         elif obj in ("archival_footage", "cinematic_footage", "satellite_imagery"):
             score += 20
         elif obj == "closing_beat":
-            score += 30  # Always include conclusion
+            score += 30
         elif obj == "title_card":
             score += 15
         else:
             score += 10
         
-        # Prefer scenes with allocated assets
         scene_id = scene["scene_id"]
         if allocations.get("allocations", {}).get(scene_id):
             score += 15
         
-        # Prefer shorter scenes (easier to fit)
         duration = scene["end_s"] - scene["start_s"]
         if duration <= 15:
             score += 10
@@ -172,38 +292,72 @@ def create_shorts_plan(
         
         scored_scenes.append((score, scene))
     
+    # Sort by score to find best window, but we'll pick chronologically
     scored_scenes.sort(key=lambda x: x[0], reverse=True)
     
-    # Select scenes to fit target duration
-    selected = []
-    total_dur = 0.0
-    for score, scene in scored_scenes:
-        scene_dur = scene["end_s"] - scene["start_s"]
-        # Cap individual scene duration for Shorts
-        capped_dur = min(scene_dur, 10.0)
-        if total_dur + capped_dur <= target_duration:
-            selected.append(scene)
-            total_dur += capped_dur
-        if total_dur >= target_duration * 0.9:  # Allow some slack
-            break
+    # Find the best contiguous window of scenes that fits target_duration
+    # We'll try windows starting from each high-scoring scene
+    best_window = None
+    best_score = -1
     
-    if not selected:
-        # Fallback: take first N scenes
-        selected = scenes[:3]
-        total_dur = sum(min(s["end_s"] - s["start_s"], 10.0) for s in selected)
+    for start_idx in range(len(scenes)):
+        total_dur = 0.0
+        window = []
+        window_score = 0
+        
+        for scene in scenes[start_idx:]:
+            scene_dur = scene["end_s"] - scene["start_s"]
+            capped_dur = min(scene_dur, 10.0)  # Cap per scene for Shorts
+            
+            if total_dur + capped_dur <= target_duration:
+                window.append(scene)
+                total_dur += capped_dur
+                # Add score for this scene
+                for s, sc in scored_scenes:
+                    if sc["scene_id"] == scene["scene_id"]:
+                        window_score += s
+                        break
+            else:
+                break
+            
+            if total_dur >= target_duration * 0.7:  # At least 70% filled
+                break
+        
+        if window and window_score > best_score:
+            best_score = window_score
+            best_window = window
     
-    # Re-time scenes for Shorts pacing (faster cuts)
+    if not best_window:
+        # Fallback: take first few scenes
+        best_window = scenes[:3]
+        total_dur = sum(min(s["end_s"] - s["start_s"], 10.0) for s in best_window)
+    
+    # Build shorts scenes in CHRONOLOGICAL order with proper mapping
     shorts_scenes = []
+    scene_mapping = []
     cursor = 0.0
-    for scene in selected:
+    
+    for scene in best_window:
         orig_dur = scene["end_s"] - scene["start_s"]
         shorts_dur = min(orig_dur, 8.0)  # Max 8s per scene in Shorts
+        
         shorts_scenes.append({
             **scene,
             "shorts_start": cursor,
             "shorts_end": cursor + shorts_dur,
             "shorts_duration": shorts_dur,
         })
+        
+        scene_mapping.append({
+            "shorts_scene_id": scene["scene_id"],
+            "source_scene_id": scene["scene_id"],
+            "source_start_s": scene["start_s"],
+            "source_end_s": scene["end_s"],
+            "shorts_start_s": cursor,
+            "shorts_end_s": cursor + shorts_dur,
+            "narration_text": scene.get("narration", ""),
+        })
+        
         cursor += shorts_dur
     
     # Generate hook text if not provided
@@ -219,6 +373,7 @@ def create_shorts_plan(
         narration_path=package_dir / "narration.wav",
         subtitles_path=package_dir / "subtitles.srt",
         music_path=package_dir / "music.wav" if (package_dir / "music.wav").is_file() else None,
+        scene_mapping=scene_mapping,
     )
 
 
@@ -252,9 +407,25 @@ def render_shorts(
     # Load asset records
     records_by_path = load_asset_records(db_records)
     
-    # Get actual narration duration (may be longer than plan)
+    # Get actual narration duration
     narration_dur = audio_duration_seconds(plan.narration_path, config.ffprobe)
     actual_duration = min(plan.total_duration, narration_dur, MAX_SHORTS_DURATION)
+    
+    # Parse original SRT for subtitle mapping
+    srt_segments = _extract_srt_segments(plan.subtitles_path)
+    
+    # Load full documentary scenes for narration mapping
+    manifest, _ = load_documentary_plan(package_dir)
+    doc_scenes = manifest.get("scenes", [])
+    
+    # Build subtitle segments for Shorts
+    shorts_subtitles = _build_subtitle_segments_for_shorts(
+        srt_segments, plan.scenes, doc_scenes
+    )
+    
+    # Write Shorts-specific SRT
+    shorts_srt_path = package_dir / "shorts_subtitles.srt"
+    _write_shorts_srt(shorts_subtitles, shorts_srt_path)
     
     # Build scene-to-asset mapping
     scene_assets = {}
@@ -332,7 +503,6 @@ def render_shorts(
                     "-t", f"{segment_duration:.6f}", "-i", str(source_path),
                 ]
             )
-            # Fast Ken Burns for Shorts
             motion_mode = idx % 3
             if motion_mode == 0:
                 motion = "zoompan=z='min(zoom+0.0003,1.15)':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
@@ -352,7 +522,6 @@ def render_shorts(
     
     # Add hook text overlay on first scene
     if plan.hook_text:
-        # We'll add drawtext for hook on first scene
         hook_escaped = plan.hook_text.replace("'", "\\'").replace(":", "\\:")
         filters[0] = filters[0].replace(
             "format=yuv420p[v0]",
@@ -375,7 +544,7 @@ def render_shorts(
         concat_inputs.extend(["-stream_loop", "-1", "-i", str(plan.music_path)])
     
     subtitle_idx = narration_idx + 1 + int(music_idx is not None)
-    concat_inputs.extend(["-i", str(plan.subtitles_path)])
+    concat_inputs.extend(["-i", str(shorts_srt_path)])
     
     # Audio mixing
     if music_idx is not None:
@@ -392,7 +561,6 @@ def render_shorts(
         filters.append(f"[{narration_idx}:a:0]atrim=0:{actual_duration:.6f},volume=1.0[aout]")
         audio_map = "[aout]"
     
-    # Subtitles: need to re-time for Shorts (complex - simplified here)
     command = [
         ffmpeg, "-y", "-v", "error",
         "-filter_complex_threads", "1",
