@@ -37,9 +37,13 @@ from geofactory.media.map_animation_engine import (
 from geofactory.media.tts_engine import (
     audio_duration_seconds, synthesize, write_text_only_narration,
 )
+from geofactory.studio.documentary_planner import run_documentary_plan, validate_documentary_plan
 from geofactory.media.thumbnail_maker import make_thumbnail
 from geofactory.media.thumbnail_engine import generate_thumbnail_concepts
 from geofactory.media.video_editor import RenderError, render_video
+from geofactory.media.documentary_renderer import render_documentary_from_plan, DocumentaryRenderError
+from geofactory.media.shorts_generator import generate_shorts_from_documentary, ShortsRenderError
+from geofactory.pipeline.orchestrator import run_pipeline_from_cli, PipelineError
 from geofactory.publishing.youtube_client import upload_approved_video
 from geofactory.quality.qa_engine import assert_approvable, run_qa, validate_srt
 from geofactory.scheduler.worker import process_offline_job, recover_and_process
@@ -153,6 +157,38 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plan.add_argument("job_id")
     plan.add_argument("--title", default="Documentary draft")
+
+    doc_plan = sub.add_parser(
+        "plan-documentary", help="Build full 8-15 min documentary plan with chapters, scenes, and asset allocations"
+    )
+    doc_plan.add_argument("job_id")
+    doc_plan.add_argument("--duration", type=float, default=600.0, help="Target duration in seconds (480-900)")
+    doc_plan.add_argument("--title", default="Documentary draft")
+    doc_render = sub.add_parser(
+        "render-documentary", help="Render full documentary from documentary plan (scene_manifest.json + asset_allocations.json)"
+    )
+    doc_render.add_argument("job_id")
+    doc_render.add_argument("--output", default="final.mp4", help="Output filename in package directory")
+    shorts = sub.add_parser(
+        "shorts", help="Generate YouTube Shorts (15-60s vertical) from documentary assets"
+    )
+    shorts.add_argument("job_id")
+    shorts.add_argument("--duration", type=float, default=45.0, help="Target duration in seconds (15-60)")
+    shorts.add_argument("--output", default="shorts.mp4", help="Output filename in package directory")
+    shorts.add_argument("--hook", help="Custom hook text for opening (auto-generated from script if omitted)")
+    produce = sub.add_parser(
+        "produce", help="Run complete end-to-end documentary production pipeline (research → script → plan → narrate → render → shorts → qa)"
+    )
+    produce.add_argument("job_id")
+    produce.add_argument("--resume", action="store_true", help="Resume from last checkpoint")
+    produce.add_argument("--duration", type=float, default=600.0, help="Documentary target duration in seconds (480-900)")
+    produce.add_argument("--shorts-duration", type=float, default=45.0, help="Shorts target duration in seconds (15-60)")
+    produce.add_argument("--hook", help="Custom hook text for Shorts opening")
+    produce.add_argument("--research-query", help="Research query (defaults to job topic)")
+    produce.add_argument("--research-limit", type=int, default=10, help="Max Wikipedia sources to fetch")
+
+
+
 
     editorial = sub.add_parser(
         "editorial-report", help="Editorial QC: reuse/static checks + contact sheet"
@@ -765,6 +801,150 @@ def run(args: argparse.Namespace) -> int:
         engines_used = sorted({s.engine for s in manifest.scenes})
         print(f"Scene manifest: {out}")
         print(f"{len(manifest.scenes)} scenes over {duration:.1f}s · engines: {', '.join(engines_used)}")
+    elif args.command == "plan-documentary":
+        if not 480 <= args.duration <= 900:
+            raise SystemExit("Duration must be between 480 and 900 seconds (8-15 minutes)")
+        plan = run_documentary_plan(db, args.job_id, config, args.duration)
+        errors = validate_documentary_plan(plan)
+        if errors:
+            print("Validation warnings:")
+            for err in errors:
+                print(f"  - {err}")
+        print(f"Documentary plan complete. See {Path(get_job(db, args.job_id)['output_dir'])}")
+    elif args.command == "render-documentary":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        
+        # Check that documentary plan exists
+        plan_path = package / "documentary_plan.json"
+        manifest_path = package / "scene_manifest.json"
+        allocations_path = package / "asset_allocations.json"
+        
+        for p in [plan_path, manifest_path, allocations_path]:
+            if not p.is_file():
+                raise SystemExit(f"Documentary plan not complete. Missing: {p.name}. Run 'plan-documentary' first.")
+        
+        # Check narration and subtitles
+        narration_path = package / "narration.wav"
+        subtitles_path = package / "subtitles.srt"
+        if not narration_path.is_file():
+            raise SystemExit(f"Narration not found: {narration_path}. Run 'narrate' first.")
+        if not subtitles_path.is_file():
+            raise SystemExit(f"Subtitles not found: {subtitles_path}. Run 'narrate' first.")
+        
+        # Check job status
+        if job["status"] not in {"awaiting_review", "qa_failed"}:
+            raise ValueError(f"Render requires awaiting_review or qa_failed, got {job['status']}.")
+        
+        transition_job(db, args.job_id, "rendering", "Owner requested documentary render from plan.")
+        
+        try:
+            output_path = package / args.output
+            render_documentary_from_plan(config, args.job_id, package, output_path)
+            
+            # Generate thumbnail if needed
+            hero_visual = None
+            from geofactory.core.database import Database
+            with Database(config.database_path).connect() as conn:
+                records = [dict(row) for row in conn.execute(
+                    "SELECT * FROM assets WHERE job_id = ? ORDER BY retrieved_at, id", (args.job_id,)
+                )]
+            for record in records:
+                if record.get("media_type", "image") in {"image", "video"}:
+                    hero_visual = Path(record["path"])
+                    break
+            
+            if not (package / "thumbnail_scores.json").is_file() and hero_visual is not None:
+                make_thumbnail(
+                    job["topic"],
+                    " ".join(job["topic"].split())[:48].strip(),
+                    package / "thumbnail.jpg",
+                    config,
+                    background=hero_visual,
+                )
+        except (DocumentaryRenderError, RenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            transition_job(
+                db, args.job_id, "qa_failed", "Documentary render did not complete.",
+                error=str(exc)
+            )
+            raise
+        
+        report = run_qa(db, args.job_id, config)
+        target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
+        transition_job(db, args.job_id, target, "QA completed after documentary render.")
+        print(f"Documentary render complete. Status: {target}; critical failures: {report['critical_failures']}")
+    elif args.command == "shorts":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        
+        # Check that documentary plan exists
+        plan_path = package / "documentary_plan.json"
+        manifest_path = package / "scene_manifest.json"
+        allocations_path = package / "asset_allocations.json"
+        
+        for p in [plan_path, manifest_path, allocations_path]:
+            if not p.is_file():
+                raise SystemExit(f"Documentary plan not complete. Missing: {p.name}. Run 'plan-documentary' first.")
+        
+        # Check narration and subtitles
+        narration_path = package / "narration.wav"
+        subtitles_path = package / "subtitles.srt"
+        if not narration_path.is_file():
+            raise SystemExit(f"Narration not found: {narration_path}. Run 'narrate' first.")
+        if not subtitles_path.is_file():
+            raise SystemExit(f"Subtitles not found: {subtitles_path}. Run 'narrate' first.")
+        
+        # Check job status
+        if job["status"] not in {"awaiting_review", "qa_failed", "awaiting_approval", "approved"}:
+            raise ValueError(f"Shorts generation requires completed documentary, got {job['status']}.")
+        
+        try:
+            output_path = package / args.output
+            generate_shorts_from_documentary(
+                config, args.job_id, package, output_path,
+                target_duration=args.duration,
+                hook_text=args.hook,
+            )
+        except (ShortsRenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"Shorts generation failed: {exc}")
+            raise
+        
+        print(f"Shorts generated: {output_path} ({args.duration}s)")
+    elif args.command == "produce":
+        job = get_job(db, args.job_id)
+        
+        # Validate job exists
+        if not job:
+            raise SystemExit(f"Job not found: {args.job_id}")
+        
+        # Check for required API keys if not resuming
+        if not args.resume:
+            if not config.groq_api_key.strip() and not config.local_llm_model.strip():
+                print("Warning: No Groq API key or local LLM configured. Script will use evidence-aware draft.")
+            if config.tts_backend == "none":
+                print("Warning: TTS backend is 'none'. Narration will be text-only; QA will block render.")
+        
+        try:
+            run_pipeline_from_cli(
+                config, args.job_id,
+                resume=args.resume,
+                duration=args.duration,
+                shorts_duration=args.shorts_duration,
+                shorts_hook=args.hook,
+                research_query=args.research_query,
+                research_limit=args.research_limit,
+            )
+        except PipelineError as e:
+            print(f"Pipeline failed at {e.stage.value}: {e}")
+            raise SystemExit(1)
+        except Exception as e:
+            print(f"Pipeline error: {e}")
+            raise SystemExit(1)
+        
+        print(f"Pipeline completed successfully for job {args.job_id}")
+
+
+
     elif args.command == "editorial-report":
         from geofactory.studio.editorial_qa import build_report
         from geofactory.studio.scene_manifest import SceneManifest
