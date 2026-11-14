@@ -51,10 +51,14 @@ jobs:
       
       - name: Run smoke test
         id: smoke
+        shell: bash
         run: |
-          set -o pipefail
+          set +e
           python -m geofactory smoke --topic "$SMOKE_TOPIC" --seconds "$SMOKE_SECONDS" --out output/smoke 2>&1 | tee smoke.log
-          echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
+          code=${PIPESTATUS[0]}
+          set -e
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          exit $code
         continue-on-error: true
       
       - name: Upload smoke artifacts
@@ -69,10 +73,32 @@ jobs:
       
       - name: Check smoke result
         if: always()
+        shell: bash
         run: |
-          if [ "${{ steps.smoke.outputs.exit_code }}" != "0" ]; then
-            echo "::error::Smoke test failed with exit code ${{ steps.smoke.outputs.exit_code }}"
+          exit_code="${{ steps.smoke.outputs.exit_code }}"
+          if [ "$exit_code" != "0" ]; then
+            echo "::error::Smoke test failed with exit code $exit_code"
             exit 1
+          fi
+      
+      - name: Summarize smoke results
+        if: always()
+        shell: bash
+        run: |
+          if [ -f smoke.log ]; then
+            echo "### Smoke Test Results" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+            tail -80 smoke.log >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          if [ -f output/smoke/summary.json ]; then
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "### Summary JSON" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`json" >> $GITHUB_STEP_SUMMARY
+            cat output/smoke/summary.json >> $GITHUB_STEP_SUMMARY
+            echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
           fi
 
   smoke-remotion:
@@ -102,7 +128,11 @@ jobs:
       - name: Install Remotion dependencies
         working-directory: ./studio/remotion
         run: |
-          npm ci
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
+          fi
           npx remotion browser ensure
       
       - name: Run Remotion render using smoke plan

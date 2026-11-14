@@ -526,15 +526,29 @@ def write_documentary_plan(plan: DocumentaryPlan, output_dir: Path) -> None:
     )
 
 
-def validate_documentary_plan(plan: DocumentaryPlan) -> list[str]:
-    """Validate the documentary plan for production readiness."""
+def validate_documentary_plan(plan: DocumentaryPlan, profile: str = "production") -> list[str]:
+    """Validate the documentary plan for production readiness.
+    
+    Args:
+        plan: The documentary plan to validate
+        profile: "production" (default) for full 8-15 min validation, 
+                 "smoke" for relaxed short-test validation
+    """
     errors = []
     
+    is_smoke = profile == "smoke"
+    min_duration = 60 if is_smoke else MIN_DURATION_S
+    max_duration = 120 if is_smoke else MAX_DURATION_S
+    min_words = 50 if is_smoke else 1200
+    max_words = 5000 if is_smoke else 3000
+    require_claims = not is_smoke
+    require_assets = not is_smoke
+    
     # Check duration
-    if plan.estimated_render_duration_s < MIN_DURATION_S:
-        errors.append(f"Estimated duration {plan.estimated_render_duration_s:.0f}s below minimum {MIN_DURATION_S}s (8 min)")
-    if plan.estimated_render_duration_s > MAX_DURATION_S:
-        errors.append(f"Estimated duration {plan.estimated_render_duration_s:.0f}s exceeds maximum {MAX_DURATION_S}s (15 min)")
+    if plan.estimated_render_duration_s < min_duration:
+        errors.append(f"Estimated duration {plan.estimated_render_duration_s:.0f}s below minimum {min_duration}s")
+    if plan.estimated_render_duration_s > max_duration:
+        errors.append(f"Estimated duration {plan.estimated_render_duration_s:.0f}s exceeds maximum {max_duration}s")
     
     # Check chapter structure
     if len(plan.chapters) != 6:
@@ -545,10 +559,31 @@ def validate_documentary_plan(plan: DocumentaryPlan) -> list[str]:
                 errors.append(f"Chapter {i+1} should be '{expected_key}', got '{chapter.key}'")
     
     # Check word count
-    if plan.total_narration_words < 1200:
-        errors.append(f"Narration only {plan.total_narration_words} words, minimum 1200 for 8-15 min")
-    if plan.total_narration_words > 3000:
-        errors.append(f"Narration {plan.total_narration_words} words exceeds practical maximum for 15 min")
+    if plan.total_narration_words < min_words:
+        errors.append(f"Narration only {plan.total_narration_words} words, minimum {min_words}")
+    if plan.total_narration_words > max_words:
+        errors.append(f"Narration {plan.total_narration_words} words exceeds practical maximum {max_words}")
+    
+    # Check claim coverage (skip for smoke)
+    all_claim_ids = set()
+    for chapter in plan.chapters:
+        all_claim_ids.update(chapter.required_claim_ids)
+    if not all_claim_ids and require_claims:
+        errors.append("No claim IDs found in narration - factual claims must be cited")
+    
+    # Check scene manifest
+    if not plan.scene_manifest.scenes:
+        errors.append("Scene manifest has no scenes")
+    
+    # Check asset coverage (skip for smoke)
+    scenes_without_assets = [
+        s.scene_id for s in plan.scene_manifest.scenes
+        if not plan.asset_allocations.get(s.scene_id)
+    ]
+    if scenes_without_assets and require_assets and len(scenes_without_assets) > len(plan.scene_manifest.scenes) * 0.5:
+        errors.append(f"Too many scenes without asset allocations: {len(scenes_without_assets)}/{len(plan.scene_manifest.scenes)}")
+    
+    return errors
     
     # Check claim coverage
     all_claim_ids = set()
@@ -578,6 +613,7 @@ def run_documentary_plan(
     job_id: str,
     config: FactoryConfig,
     target_duration_s: float = TARGET_DURATION_S,
+    profile: str = "production",
 ) -> DocumentaryPlan:
     """CLI entry point: build documentary plan for a job."""
     job = get_job(db, job_id)
@@ -592,7 +628,7 @@ def run_documentary_plan(
     plan = build_documentary_plan(db, job_id, config, script_path, target_duration_s)
     
     # Validate
-    errors = validate_documentary_plan(plan)
+    errors = validate_documentary_plan(plan, profile=profile)
     if errors:
         print("Documentary plan validation warnings:")
         for err in errors:

@@ -9,7 +9,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 from geofactory.media.map_animation_engine import (
     _bounds,
@@ -100,7 +99,8 @@ def _headline_for(topic: str, headline: str | None) -> str:
     return " ".join(words).upper()
 
 
-def _font(font_path: Path, size: int) -> ImageFont.FreeTypeFont:
+def _font(font_path: Path, size: int) -> "ImageFont.FreeTypeFont":
+    from PIL import ImageFont
     return ImageFont.truetype(str(font_path), size=size)
 
 

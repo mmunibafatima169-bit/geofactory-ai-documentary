@@ -860,7 +860,853 @@ def run(args: argparse.Namespace) -> int:
             
             # Generate thumbnail if needed
             hero_visual = None
-            from geofactory.core.database import Database
+            with Database(config.database_path).connect() as conn:
+                records = [dict(row) for row in conn.execute(
+                    "SELECT * FROM assets WHERE job_id = ? ORDER BY retrieved_at, id", (args.job_id,)
+                )]
+            for record in records:
+                if record.get("media_type", "image") in {"image", "video"}:
+                    hero_visual = Path(record["path"])
+                    break
+            
+            if not (package / "thumbnail_scores.json").is_file() and hero_visual is not None:
+                make_thumbnail(
+                    job["topic"],
+                    " ".join(job["topic"].split())[:48].strip(),
+                    package / "thumbnail.jpg",
+                    config,
+                    background=hero_visual,
+                )
+        except (DocumentaryRenderError, RenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            transition_job(
+                db, args.job_id, "qa_failed", "Documentary render did not complete.",
+                error=str(exc)
+            )
+            raise
+        
+        report = run_qa(db, args.job_id, config)
+        target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
+        transition_job(db, args.job_id, target, "QA completed after documentary render.")
+        print(f"Documentary render complete. Status: {target}; critical failures: {report['critical_failures']}")
+    elif args.command == "remotion-render":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        
+        # Check that documentary plan exists
+        plan_path = package / "documentary_plan.json"
+        manifest_path = package / "scene_manifest.json"
+        allocations_path = package / "asset_allocations.json"
+        
+        for p in [plan_path, manifest_path, allocations_path]:
+            if not p.is_file():
+                raise SystemExit(f"Documentary plan not complete. Missing: {p.name}. Run 'plan-documentary' first.")
+        
+        # Check narration and subtitles
+        narration_path = package / "narration.wav"
+        subtitles_path = package / "subtitles.srt"
+        if not narration_path.is_file():
+            raise SystemExit(f"Narration not found: {narration_path}. Run 'narrate' first.")
+        if not subtitles_path.is_file():
+            raise SystemExit(f"Subtitles not found: {subtitles_path}. Run 'narrate' first.")
+        
+        # Check job status
+        if job["status"] not in {"awaiting_review", "qa_failed"}:
+            raise ValueError(f"Remotion render requires awaiting_review or qa_failed, got {job['status']}.")
+        
+        transition_job(db, args.job_id, "rendering", "Owner requested Remotion documentary render from plan.")
+        
+        try:
+            output_path = package / args.output
+            render_documentary_remotion(config, args.job_id, package, output_path)
+        except (RemotionRendererError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            transition_job(
+                db, args.job_id, "qa_failed", "Remotion documentary render did not complete.",
+                error=str(exc)
+            )
+            raise
+        
+        report = run_qa(db, args.job_id, config)
+        target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
+        transition_job(db, args.job_id, target, "QA completed after Remotion documentary render.")
+        print(f"Remotion documentary render complete. Status: {target}; critical failures: {report['critical_failures']}")
+    elif args.command == "shorts":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        
+        # Check that documentary plan exists
+        plan_path = package / "documentary_plan.json"
+        manifest_path = package / "scene_manifest.json"
+        allocations_path = package / "asset_allocations.json"
+        
+        for p in [plan_path, manifest_path, allocations_path]:
+            if not p.is_file():
+                raise SystemExit(f"Documentary plan not complete. Missing: {p.name}. Run 'plan-documentary' first.")
+        
+        # Check narration and subtitles
+        narration_path = package / "narration.wav"
+        subtitles_path = package / "subtitles.srt"
+        if not narration_path.is_file():
+            raise SystemExit(f"Narration not found: {narration_path}. Run 'narrate' first.")
+        if not subtitles_path.is_file():
+            raise SystemExit(f"Subtitles not found: {subtitles_path}. Run 'narrate' first.")
+        
+        # Check job status
+        if job["status"] not in {"awaiting_review", "qa_failed", "awaiting_approval", "approved"}:
+            raise ValueError(f"Shorts generation requires completed documentary, got {job['status']}.")
+        
+        try:
+            output_path = package / args.output
+            generate_shorts_from_documentary(
+                config, args.job_id, package, output_path,
+                target_duration=args.duration,
+                hook_text=args.hook,
+            )
+        except (ShortsRenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            print(f"Shorts generation failed: {exc}")
+            raise
+        
+        print(f"Shorts generated: {output_path} ({args.duration}s)")
+    elif args.command == "produce":
+        job = get_job(db, args.job_id)
+        
+        # Validate job exists
+        if not job:
+            raise SystemExit(f"Job not found: {args.job_id}")
+        
+        # Check for required API keys if not resuming
+        if not args.resume:
+            if not config.groq_api_key.strip() and not config.local_llm_model.strip():
+                print("Warning: No Groq API key or local LLM configured. Script will use evidence-aware draft.")
+            if config.tts_backend == "none":
+                print("Warning: TTS backend is 'none'. Narration will be text-only; QA will block render.")
+        
+        try:
+            run_pipeline_from_cli(
+                config, args.job_id,
+                resume=args.resume,
+                duration=args.duration,
+                shorts_duration=args.shorts_duration,
+                shorts_hook=args.hook,
+                research_query=args.research_query,
+                research_limit=args.research_limit,
+            )
+        except PipelineError as e:
+            print(f"Pipeline failed at {e.stage.value}: {e}")
+            raise SystemExit(1)
+        except Exception as e:
+            print(f"Pipeline error: {e}")
+            raise SystemExit(1)
+        
+        print(f"Pipeline completed successfully for job {args.job_id}")
+
+
+    elif args.command == "smoke":
+        return _cmd_smoke(args, config)
+
+
+def _cmd_smoke(args, config) -> int:
+    """Run smoke test with synthetic fixtures (no API keys required)."""
+    import hashlib
+    import json
+    import shutil
+    import subprocess
+    import sys
+    import tempfile
+    import time
+    from pathlib import Path
+    
+    from geofactory.agents.research_agent import import_ledger
+    from geofactory.media.documentary_renderer import render_documentary_from_plan
+    from geofactory.media.map_animation_engine import MapSceneSpec, create_map_scene
+    from geofactory.media.shorts_generator import generate_shorts_from_documentary
+    from geofactory.media.thumbnail_engine import generate_thumbnail_concepts
+    from geofactory.media.tts_engine import synthesize, write_text_only_narration, audio_duration_seconds
+    from geofactory.quality.qa_engine import run_qa
+    from geofactory.studio.documentary_planner import run_documentary_plan
+    from geofactory.core.config import FactoryConfig
+    from geofactory.core.jobs import create_job
+    
+    # Output directory
+    out_dir = Path(args.out)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Summary tracking
+    summary = {
+        "topic": args.topic,
+        "target_seconds": args.seconds,
+        "start_time": time.time(),
+        "stages": {},
+        "final_output": None,
+    "ffprobe": None,
+        "overall_status": "UNKNOWN",
+        "error": None
+    }
+    
+    def record_stage(name, status, details=None, error=None):
+        summary["stages"][name] = {
+            "status": status,
+            "details": details or {},
+            "error": error
+        }
+        if status == "FAIL":
+            summary["overall_status"] = "FAIL"
+    
+    def fail_stage(name, exc):
+        import traceback
+        record_stage(name, "FAIL", error={"type": type(exc).__name__, "message": str(exc), "traceback": traceback.format_exc()})
+        print(f"STAGE {name}: FAILED - {exc}")
+        return False
+    
+    print(f"=== SMOKE TEST: {args.topic} ({args.seconds}s) ===")
+    print(f"Output directory: {out_dir}")
+    
+    # Determine ledger path
+    if args.ledger:
+        ledger_path = args.ledger
+    else:
+        ledger_path = Path(__file__).parent / "tests" / "fixtures" / "singapore_ledger.json"
+    
+    if not ledger_path.exists():
+        record_stage("init", "FAIL", error={"type": "FileNotFoundError", "message": f"Ledger not found: {ledger_path}"})
+        print(f"ERROR: Ledger not found at {ledger_path}")
+        return 1
+    
+    # Create a temporary job ID
+    job_id = f"smoke-{args.topic.lower().replace(' ', '-')}-{int(time.time())}"
+    temp_db_path = out_dir / "smoke.sqlite3"
+    
+    try:
+        # STAGE 1: Init DB and import ledger
+        print("\n--- Stage 1: Initialize DB & Import Ledger ---")
+        
+        # Create config for smoke test
+        smoke_config = FactoryConfig(
+            database_path=str(temp_db_path),
+            output_dir=str(out_dir),
+            channel_name="SMOKE_TEST",
+            bind_host="127.0.0.1",
+            dashboard_port=8765,
+            require_topic_approval=False,
+            dry_run=True,
+            publishing_enabled=False,
+            ffmpeg="ffmpeg",
+            ffprobe="ffprobe",
+            tts_backend="espeak",
+            espeak_executable="espeak-ng",
+            espeak_voice="en-us",
+            espeak_speed=155,
+            width=1920,
+            height=1080,
+        )
+        
+        db = Database(smoke_config)
+        create_job(db, job_id, args.topic, f"How {args.topic} developed", "smoke_test")
+        
+        # Import the test ledger
+        with open(ledger_path) as f:
+            ledger = json.load(f)
+        
+        # Remove test metadata
+        ledger.pop("meta", None)
+        import_ledger(db, job_id, ledger)
+        record_stage("ledger_import", "PASS", {"job_id": job_id, "claims": len(ledger.get("claims", []))})
+        print(f"  PASS: Ledger imported ({len(ledger.get('claims', []))} claims)")
+        
+    except Exception as e:
+        fail_stage("ledger_import", e)
+        summary["end_time"] = time.time()
+        summary["overall_status"] = "FAIL"
+        (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
+        return 1
+    
+    # STAGE 2: Wikipedia Research (will fail without network - mark as FAIL per requirements)
+    print("\n--- Stage 2: Wikipedia Research ---")
+    try:
+        from geofactory.agents.research_agent import discover_wikipedia_sources
+        sources = discover_wikipedia_sources(smoke_config, args.topic, limit=5)
+        record_stage("wikipedia_research", "PASS", {"sources_found": len(sources)})
+        print(f"  PASS: Found {len(sources)} sources")
+    except Exception as e:
+        record_stage("wikipedia_research", "FAIL", error={"type": type(e).__name__, "message": str(e)})
+        print(f"  FAIL (expected without network): {e}")
+    
+    # STAGE 3: Commons Assets (will fail without network)
+    print("\n--- Stage 3: Commons Assets ---")
+    try:
+        from geofactory.media.asset_manager import search_and_download_commons
+        assets = search_and_download_commons(smoke_config, job_id, args.topic, limit=3, downloads=2)
+        record_stage("commons_assets", "PASS", {"assets_downloaded": len(assets)})
+        print(f"  PASS: Downloaded {len(assets)} assets")
+    except Exception as e:
+        record_stage("commons_assets", "FAIL", error={"type": type(e).__name__, "message": str(e)})
+        print(f"  FAIL (expected without network): {e}")
+    
+    # STAGE 4: Map Build (requires PIL - will fail if not available)
+    print("\n--- Stage 4: Map Build ---")
+    try:
+        map_spec = MapSceneSpec(country_code="SGP", duration_s=5.0, title=args.topic, width=1920, height=1080)
+        map_output = out_dir / "map_zoom.mp4"
+        create_map_scene(smoke_config, map_spec, map_output)
+        if map_output.exists():
+            record_stage("map_build", "PASS", {"output": str(map_output), "size_bytes": map_output.stat().st_size})
+            print(f"  PASS: Map created ({map_output.stat().st_size} bytes)")
+        else:
+            record_stage("map_build", "FAIL", error={"type": "RuntimeError", "message": "Map output not created"})
+    except ImportError as e:
+        if "PIL" in str(e) or "Pillow" in str(e):
+            record_stage("map_build", "SKIP", details={"reason": "PIL not available"})
+            print(f"  SKIP: PIL not available")
+        else:
+            fail_stage("map_build", e)
+    except Exception as e:
+        fail_stage("map_build", e)
+    
+    # STAGE 5: Thumbnail Build (requires PIL)
+    print("\n--- Stage 5: Thumbnail Build ---")
+    try:
+        concepts = generate_thumbnail_concepts(smoke_config, "SGP", args.topic, out_dir)
+        record_stage("thumbnail_build", "PASS", {"concepts": len(concepts)})
+        print(f"  PASS: Generated {len(concepts)} thumbnail concepts")
+    except ImportError as e:
+        if "PIL" in str(e) or "Pillow" in str(e):
+            record_stage("thumbnail_build", "SKIP", details={"reason": "PIL not available"})
+            print(f"  SKIP: PIL not available")
+        else:
+            fail_stage("thumbnail_build", e)
+    except Exception as e:
+        fail_stage("thumbnail_build", e)
+    
+    # STAGE 6: eSpeak Narrate
+    print("\n--- Stage 6: eSpeak Narrate ---")
+    try:
+        narration_text = f"This is a smoke test documentary about {args.topic}. {args.topic} is a sovereign island city-state in Southeast Asia. Founded in 1819 as a trading post, it became one of the world's busiest ports. Today it has a highly developed free-market economy."
+        narration_wav = out_dir / "narration.wav"
+        srt_path = out_dir / "narration.srt"
+        
+        espeak_path = shutil.which("espeak-ng")
+        if not espeak_path:
+            record_stage("espeak_narrate", "SKIP", details={"reason": "espeak-ng binary not installed"})
+            print(f"  SKIP: espeak-ng not installed")
+        else:
+            write_text_only_narration(narration_text, narration_wav.with_suffix(".txt"))
+            synthesize(smoke_config, narration_text, narration_wav)
+            duration = audio_duration_seconds(narration_wav)
+            from geofactory.media.tts_engine import write_estimated_srt
+            write_estimated_srt(narration_text, srt_path, duration)
+            record_stage("espeak_narrate", "PASS", {"wav": str(narration_wav), "duration_s": duration, "srt": str(srt_path)})
+            print(f"  PASS: Narration synthesized ({duration:.1f}s)")
+    except Exception as e:
+        fail_stage("espeak_narrate", e)
+    
+    # STAGE 7: Plan Documentary
+    print("\n--- Stage 7: Plan Documentary ---")
+    try:
+        plan_result = run_documentary_plan(smoke_config, job_id, target_duration=args.seconds, title=args.topic, profile="smoke")
+        record_stage("plan_documentary", "PASS", {"plan": str(plan_result)})
+        print(f"  PASS: Documentary plan created")
+    except Exception as e:
+        fail_stage("plan_documentary", e)
+    
+    # STAGE 8: Render Documentary (FFmpeg)
+    print("\n--- Stage 8: Render Documentary (FFmpeg) ---")
+    try:
+        output_mp4 = out_dir / "final.mp4"
+        render_documentary_from_plan(smoke_config, job_id, output_mp4)
+        if output_mp4.exists():
+            record_stage("render_documentary", "PASS", {"output": str(output_mp4), "size_bytes": output_mp4.stat().st_size})
+            print(f"  PASS: Documentary rendered ({output_mp4.stat().st_size} bytes)")
+        else:
+            record_stage("render_documentary", "FAIL", error={"type": "RuntimeError", "message": "Output not created"})
+    except Exception as e:
+        fail_stage("render_documentary", e)
+    
+    # STAGE 9: QA
+    print("\n--- Stage 9: QA ---")
+    try:
+        qa_report = run_qa(db, job_id, smoke_config)
+        record_stage("qa", "PASS", {"approval_blocked": qa_report.get("approval_blocked", True)})
+        print(f"  PASS: QA completed (approval_blocked={qa_report.get('approval_blocked', True)})")
+    except Exception as e:
+        fail_stage("qa", e)
+    
+    # STAGE 10: Shorts Generation
+    print("\n--- Stage 10: Shorts Generation ---")
+    try:
+        shorts_output = out_dir / "shorts.mp4"
+        generate_shorts_from_documentary(smoke_config, job_id, out_dir, shorts_output, target_duration=min(45, args.seconds))
+        if shorts_output.exists():
+            record_stage("shorts", "PASS", {"output": str(shorts_output), "size_bytes": shorts_output.stat().st_size})
+            print(f"  PASS: Shorts generated ({shorts_output.stat().st_size} bytes)")
+        else:
+            record_stage("shorts", "FAIL", error={"type": "RuntimeError", "message": "Shorts output not created"})
+    except Exception as e:
+        fail_stage("shorts", e)
+    
+    # STAGE 11: FFprobe final output
+    print("\n--- Stage 11: FFprobe Validation ---")
+    final_video = out_dir / "final.mp4"
+    if final_video.exists():
+        try:
+            ffprobe = shutil.which("ffprobe")
+            if ffprobe:
+                result = subprocess.run(
+                    [ffprobe, "-v", "error", "-show_format", "-show_streams", "-of", "json", str(final_video)],
+                    capture_output=True, text=True, timeout=30, check=True
+                )
+                ffprobe_data = json.loads(result.stdout)
+                summary["ffprobe"] = ffprobe_data
+                record_stage("ffprobe", "PASS", {"format": ffprobe_data.get("format", {})})
+                print(f"  PASS: FFprobe validation complete")
+                
+                fmt = ffprobe_data.get("format", {})
+                duration = float(fmt.get("duration", 0))
+                print(f"    Duration: {duration:.3f}s")
+                for stream in ffprobe_data.get("streams", []):
+                    if stream.get("codec_type") == "video":
+                        print(f"    Video: {stream.get('width')}x{stream.get('height')} {stream.get('codec_name')}")
+                    elif stream.get("codec_type") == "audio":
+                        print(f"    Audio: {stream.get('codec_name')} {stream.get('sample_rate')}Hz")
+            else:
+                record_stage("ffprobe", "SKIP", details={"reason": "ffprobe not available"})
+        except Exception as e:
+            fail_stage("ffprobe", e)
+    else:
+        record_stage("ffprobe", "SKIP", details={"reason": "No final.mp4 to probe"})
+    
+    # Finalize
+    summary["end_time"] = time.time()
+    summary["final_output"] = str(final_video) if final_video.exists() else None
+    if summary["overall_status"] != "FAIL":
+        summary["overall_status"] = "PASS"
+    
+    # Write summary
+    summary_path = out_dir / "summary.json"
+    summary_path.write_text(json.dumps(summary, indent=2))
+    print(f"\n=== SMOKE TEST COMPLETE ===")
+    print(f"Summary: {summary_path}")
+    print(f"Overall: {summary['overall_status']}")
+    for stage, info in summary["stages"].items():
+        print(f"  {stage}: {info['status']}")
+    
+    if summary["overall_status"] == "FAIL":
+        return 1
+    return 0
+
+def run(args: argparse.Namespace) -> int:
+    config = load_config(args.config)
+    db = Database(config.database_path)
+    db.initialize()
+
+    if args.command == "init":
+        _init(args.config, config)
+    elif args.command == "doctor":
+        print(json.dumps(_doctor(config), indent=2))
+    elif args.command == "topics":
+        if args.limit < 1 or args.limit > 25:
+            raise ValueError("Topic limit must be between 1 and 25.")
+        print(json.dumps(propose_topics(db, args.limit), indent=2, ensure_ascii=False))
+    elif args.command == "new":
+        job = _create_or_get_job(db, config, args.topic, args.question)
+        print(json.dumps({"id": job["id"], "status": job["status"], "output_dir": job["output_dir"]}, indent=2))
+    elif args.command == "demo":
+        _process_demo(db, config, args.topic, args.question)
+    elif args.command == "research":
+        job = get_job(db, args.job_id)
+        counts = import_ledger(db, args.job_id, args.ledger)
+        export_ledger(db, args.job_id, Path(job["output_dir"]) / "source_ledger.json")
+        print(json.dumps(counts, indent=2))
+    elif args.command == "research-online":
+        job = get_job(db, args.job_id)
+        sources = discover_wikipedia_sources(
+            db, args.job_id, args.query, limit=args.limit
+        )
+        package = Path(job["output_dir"])
+        export_ledger(db, args.job_id, package / "source_ledger.json")
+        write_script_preview(db, args.job_id, package / "script.md")
+        print(
+            json.dumps(
+                {
+                    "sources_added": len(sources),
+                    "sources": [
+                        {
+                            "id": source["id"],
+                            "title": source["title"],
+                            "url": source["url"],
+                            "publisher": source["publisher"],
+                            "accessed_at": source["accessed_at"],
+                            "licence": source["licence"],
+                            "licence_url": source["licence_url"],
+                        }
+                        for source in sources
+                    ],
+                    "notice": "Research leads only. Verify against cited and independent sources.",
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    elif args.command == "commons-search":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        result = search_and_download_commons(
+            db, args.job_id, args.query, package / "assets",
+            limit=args.limit, max_downloads=args.downloads,
+        )
+        assets = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
+        write_attribution_report(assets, package / "attribution.md")
+        print(json.dumps(result, indent=2, ensure_ascii=False))
+    elif args.command == "stock-search":
+        if not 1 <= args.limit <= 10 or not 1 <= args.downloads <= 5:
+            raise ValueError("Stock search limits must be 1-10 results and 1-5 downloads.")
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        result = search_and_download_stock_videos(
+            db, args.job_id, args.query, package / "assets", config,
+            provider=args.provider, limit=args.limit, max_downloads=args.downloads,
+        )
+        assets = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
+        write_attribution_report(assets, package / "attribution.md")
+        print(json.dumps({
+            "provider": args.provider,
+            "downloaded": len(result["assets"]),
+            "rejected": result["rejected"],
+            "notice": "Provider stock media remains subject to each platform's current licence terms and human review.",
+        }, indent=2, ensure_ascii=False))
+    elif args.command == "map-build":
+        if not re.fullmatch(r"[A-Za-z]{3}", args.country):
+            raise ValueError("Country must be a three-letter ISO A3 code.")
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        package.mkdir(parents=True, exist_ok=True)
+        existing_scenes = _package_map_scenes(package)
+        scene_path = package / "maps" / f"{args.country.upper()}-{len(existing_scenes) + 1:02d}.mp4"
+        scene_manifest = create_map_scene(
+            config.root,
+            scene_path,
+            MapSceneSpec(
+                country_iso_a3=args.country,
+                duration_seconds=args.duration,
+                title=args.title,
+            ),
+            ffmpeg_name=config.ffmpeg,
+            width=min(1280, config.width),
+            height=min(720, config.height),
+        )
+        entries = []
+        manifest_path = package / "map_scenes.json"
+        if manifest_path.is_file():
+            saved = json.loads(manifest_path.read_text(encoding="utf-8"))
+            entries = saved.get("scenes", []) if isinstance(saved, dict) else []
+            if not isinstance(entries, list):
+                raise ValueError("Existing map-scene manifest has an invalid scenes list.")
+        entries.append({
+            "path": str(scene_path.relative_to(package)),
+            "dataset_name": scene_manifest["dataset_name"],
+            "dataset_version": scene_manifest["dataset_version"],
+            "licence": scene_manifest["licence"],
+            "dataset_download_date": scene_manifest["dataset_download_date"],
+        })
+        manifest_path.write_text(
+            json.dumps({"scenes": entries}, indent=2) + "\n", encoding="utf-8"
+        )
+        attribution = package / "attribution.md"
+        current = attribution.read_text(encoding="utf-8") if attribution.is_file() else ""
+        map_credit = (
+            f"Made with {scene_manifest['dataset_name']} "
+            f"{scene_manifest['dataset_version']} ({scene_manifest['licence']}); "
+            f"downloaded {scene_manifest['dataset_download_date']}. "
+            f"{scene_manifest['licence_url']}"
+        )
+        if map_credit not in current:
+            attribution.write_text(
+                current.rstrip() + "\n\n## Map data\n\n" + map_credit + "\n",
+                encoding="utf-8",
+            )
+        thumbnail_result = generate_thumbnail_concepts(
+            job["topic"], args.country, package, config.root
+        )
+        print(json.dumps({
+            "scene": str(scene_path),
+            "country": scene_manifest["country_name"],
+            "dataset": {
+                "name": scene_manifest["dataset_name"],
+                "version": scene_manifest["dataset_version"],
+                "licence": scene_manifest["licence"],
+                "download_date": scene_manifest["dataset_download_date"],
+            },
+            "thumbnail_winner": thumbnail_result["winner"],
+            "thumbnail_scores": thumbnail_result["winner_scores"],
+        }, indent=2, ensure_ascii=False))
+    elif args.command == "thumbnail-build":
+        job = get_job(db, args.job_id)
+        result = generate_thumbnail_concepts(
+            job["topic"], args.country, Path(job["output_dir"]), config.root,
+            headline=args.headline,
+        )
+        print(json.dumps({
+            "winner": result["winner"],
+            "winner_scores": result["winner_scores"],
+            "outputs": result["outputs"],
+        }, indent=2, ensure_ascii=False))
+    elif args.command == "demo-online":
+        if not 1 <= args.limit <= 10 or not 1 <= args.downloads <= 5:
+            raise ValueError("Online demo limits must be 1-10 sources and 1-5 asset downloads.")
+        job = _create_or_get_job(db, config, args.topic, args.question)
+        if job["status"] == "proposed":
+            process_offline_job(db, config, job["id"])
+        job = get_job(db, job["id"])
+        package = Path(job["output_dir"])
+        sources = discover_wikipedia_sources(
+            db, job["id"], args.research_query, limit=args.limit
+        )
+        export_ledger(db, job["id"], package / "source_ledger.json")
+        write_script_preview(db, job["id"], package / "script.md")
+        asset_result = search_and_download_commons(
+            db, job["id"], args.visual_query, package / "assets",
+            limit=max(args.limit, args.downloads), max_downloads=args.downloads,
+        )
+        assets = export_asset_ledger(db, job["id"], package / "asset_ledger.json")
+        write_attribution_report(assets, package / "attribution.md")
+        if assets:
+            short_title = " ".join(job["topic"].split())[:48].strip()
+            make_thumbnail(
+                job["topic"], short_title, package / "thumbnail.jpg", config,
+                background=Path(str(assets[0]["path"])),
+            )
+        qa_report = run_qa(db, job["id"], config)
+        print(
+            json.dumps(
+                {
+                    "job_id": job["id"],
+                    "package_dir": str(package),
+                    "sources_added": len(sources),
+                    "assets_downloaded_or_reused": len(asset_result["assets"]),
+                    "assets_rejected": asset_result["rejected"],
+                    "qa_blocked": qa_report["approval_blocked"],
+                    "critical_failures": qa_report["critical_failures"],
+                    "status": get_job(db, job["id"])["status"],
+                    "notice": (
+                        "Real source and asset discovery completed. This is not a finished video: "
+                        "narration and final render still require production and human review."
+                    ),
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+    elif args.command == "script":
+        job = get_job(db, args.job_id)
+        if config.groq_api_key.strip() or config.local_llm_model.strip():
+            from geofactory.agents.script_agent import generate_evidence_script
+
+            words = generate_evidence_script(
+                db, args.job_id, Path(job["output_dir"]) / "script.md", config
+            )
+            provider = "Groq" if config.groq_api_key.strip() else "local model"
+            print(f"Wrote {provider} draft with {words} words; fact-check before use.")
+        else:
+            words = write_script_preview(db, args.job_id, Path(job["output_dir"]) / "script.md")
+            print(
+                f"Wrote evidence-aware draft with {words} words; configure Groq or Ollama "
+                "for a full draft."
+            )
+    elif args.command == "asset-add":
+        job = get_job(db, args.job_id)
+        asset_id = register_asset(
+            db, args.job_id, args.file, args.origin_url, args.creator, args.licence,
+            args.attribution, args.commercial_use,
+        )
+        package = Path(job["output_dir"])
+        records = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
+        write_attribution_report(records, package / "attribution.md")
+        print(f"Registered asset {asset_id}")
+    elif args.command == "music-add":
+        job = get_job(db, args.job_id)
+        asset_id = register_music_asset(
+            db, args.job_id, args.file, args.origin_url, args.creator, args.license,
+            args.attribution, args.commercial_use,
+        )
+        package = Path(job["output_dir"])
+        records = export_asset_ledger(db, args.job_id, package / "asset_ledger.json")
+        write_attribution_report(records, package / "attribution.md")
+        print(f"Registered background music asset {asset_id}; render will mix it at -20 dB.")
+    elif args.command == "narrate":
+        job = get_job(db, args.job_id)
+        text = args.text_file.read_text(encoding="utf-8")
+        package = Path(job["output_dir"])
+        if config.tts_backend == "none":
+            write_text_only_narration(text, package / "narration.txt")
+            manifest = {
+                "mode": "text-only",
+                "backend": "none",
+                "narration_text_sha256": sha256_file(package / "narration.txt"),
+                "audio_sha256": "",
+                "subtitles_sha256": "",
+            }
+            print(
+                "Saved clearly labelled text-only narration. No audio or synchronized SRT "
+                "was generated; QA will block rendering."
+            )
+        else:
+            duration = synthesize(
+                text, package / "narration.wav", config,
+                subtitle_destination=package / "subtitles.srt",
+            )
+            (package / "narration.txt").write_text(text.strip() + "\n", encoding="utf-8")
+            manifest = {
+                "mode": "audio",
+                "backend": config.tts_backend,
+                "narration_text_sha256": sha256_file(package / "narration.txt"),
+                "audio_sha256": sha256_file(package / "narration.wav"),
+                "subtitles_sha256": sha256_file(package / "subtitles.srt"),
+                "duration_seconds": duration,
+            }
+            print(
+                f"Generated and verified narration ({duration:.1f}s) with "
+                f"sentence-timed subtitles."
+            )
+        manifest_path = package / "narration_manifest.json"
+        temporary_manifest = manifest_path.with_suffix(".json.tmp")
+        temporary_manifest.write_text(
+            json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+        )
+        temporary_manifest.replace(manifest_path)
+        _invalidate_if_package_changed(db, args.job_id, package)
+    elif args.command == "render":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        if job["status"] not in {"awaiting_review", "qa_failed"}:
+            raise ValueError(f"Render requires awaiting_review or qa_failed, got {job['status']}.")
+        _validate_narration_package(package, config)
+        transition_job(db, args.job_id, "rendering", "Owner requested local FFmpeg render.")
+        with db.connect() as conn:
+            records = [dict(row) for row in conn.execute(
+                "SELECT * FROM assets WHERE job_id = ? ORDER BY retrieved_at, id", (args.job_id,)
+            )]
+        images = [Path(record["path"]) for record in records]
+        map_scenes = _package_map_scenes(package)
+        try:
+            render_video(
+                config, images, package / "narration.wav", package / "final.mp4",
+                records, package / "subtitles.srt", scene_videos=map_scenes,
+            )
+            hero_visual = next(
+                (
+                    Path(record["path"])
+                    for record in records
+                    if record.get("media_type", "image") in {"image", "video"}
+                ),
+                None,
+            )
+            if map_scenes and not (package / "thumbnail_scores.json").is_file():
+                map_manifest = validate_map_scene(map_scenes[0])
+                generate_thumbnail_concepts(
+                    job["topic"], map_manifest["scene"]["country_iso_a3"],
+                    package, config.root,
+                )
+            elif hero_visual is not None and not (
+                package / "thumbnail_scores.json"
+            ).is_file():
+                make_thumbnail(
+                    job["topic"],
+                    " ".join(job["topic"].split())[:48].strip(),
+                    package / "thumbnail.jpg",
+                    config,
+                    background=hero_visual,
+                )
+        except (RenderError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            transition_job(
+                db, args.job_id, "qa_failed", "Render or thumbnail generation did not complete.",
+                error=str(exc)
+            )
+            raise
+        report = run_qa(db, args.job_id, config)
+        target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
+        transition_job(db, args.job_id, target, "QA completed after render.")
+        print(f"Render complete. Status: {target}; critical failures: {report['critical_failures']}")
+    elif args.command == "plan":
+        from geofactory.studio.visual_director import (
+            plan_scenes, segments_from_narration,
+        )
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        script_path = package / "script.md"
+        narration_path = package / "narration.txt"
+        if script_path.is_file():
+            raw = script_path.read_text(encoding="utf-8")
+            text = raw.partition("## Narration")[2] or raw
+        elif narration_path.is_file():
+            text = narration_path.read_text(encoding="utf-8")
+        else:
+            raise SystemExit("plan requires script.md or narration.txt in the package")
+        duration = 0.0
+        wav = package / "narration.wav"
+        if wav.is_file():
+            duration = audio_duration_seconds(wav, config.ffprobe)
+        if duration <= 0:
+            words = len(text.split())
+            duration = max(60.0, words / 2.7)
+        engines = {"ffmpeg"}
+        repo_root = Path(__file__).resolve().parents[2]
+        if (repo_root / "studio" / "remotion" / "package.json").is_file():
+            engines.add("remotion")
+        if shutil.which("blender"):
+            engines.add("blender")
+        if shutil.which("manim"):
+            engines.add("manim")
+        segments = segments_from_narration(text, duration)
+        manifest = plan_scenes(
+            args.job_id, args.title, segments,
+            engines_available=engines, width=config.width, height=config.height,
+        )
+        out = package / "scene_manifest.json"
+        manifest.save(out)
+        engines_used = sorted({s.engine for s in manifest.scenes})
+        print(f"Scene manifest: {out}")
+        print(f"{len(manifest.scenes)} scenes over {duration:.1f}s · engines: {', '.join(engines_used)}")
+    elif args.command == "plan-documentary":
+        if not 480 <= args.duration <= 900:
+            raise SystemExit("Duration must be between 480 and 900 seconds (8-15 minutes)")
+        plan = run_documentary_plan(db, args.job_id, config, args.duration)
+        errors = validate_documentary_plan(plan)
+        if errors:
+            print("Validation warnings:")
+            for err in errors:
+                print(f"  - {err}")
+        print(f"Documentary plan complete. See {Path(get_job(db, args.job_id)['output_dir'])}")
+    elif args.command == "render-documentary":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        
+        # Check that documentary plan exists
+        plan_path = package / "documentary_plan.json"
+        manifest_path = package / "scene_manifest.json"
+        allocations_path = package / "asset_allocations.json"
+        
+        for p in [plan_path, manifest_path, allocations_path]:
+            if not p.is_file():
+                raise SystemExit(f"Documentary plan not complete. Missing: {p.name}. Run 'plan-documentary' first.")
+        
+        # Check narration and subtitles
+        narration_path = package / "narration.wav"
+        subtitles_path = package / "subtitles.srt"
+        if not narration_path.is_file():
+            raise SystemExit(f"Narration not found: {narration_path}. Run 'narrate' first.")
+        if not subtitles_path.is_file():
+            raise SystemExit(f"Subtitles not found: {subtitles_path}. Run 'narrate' first.")
+        
+        # Check job status
+        if job["status"] not in {"awaiting_review", "qa_failed"}:
+            raise ValueError(f"Render requires awaiting_review or qa_failed, got {job['status']}.")
+        
+        transition_job(db, args.job_id, "rendering", "Owner requested documentary render from plan.")
+        
+        try:
+            output_path = package / args.output
+            render_documentary_from_plan(config, args.job_id, package, output_path)
+            
+            # Generate thumbnail if needed
+            hero_visual = None
             with Database(config.database_path).connect() as conn:
                 records = [dict(row) for row in conn.execute(
                     "SELECT * FROM assets WHERE job_id = ? ORDER BY retrieved_at, id", (args.job_id,)
@@ -1187,7 +2033,7 @@ def run(args: argparse.Namespace) -> int:
         # STAGE 7: Plan Documentary
         print("\n--- Stage 7: Plan Documentary ---")
         try:
-            plan_result = run_documentary_plan(smoke_config, job_id, target_duration=args.seconds, title=args.topic)
+            plan_result = run_documentary_plan(smoke_config, job_id, target_duration=args.seconds, title=args.topic, profile="smoke")
             record_stage("plan_documentary", "PASS", {"plan": str(plan_result)})
             print(f"  PASS: Documentary plan created")
         except Exception as e:

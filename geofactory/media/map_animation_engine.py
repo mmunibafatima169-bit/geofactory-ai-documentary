@@ -18,7 +18,6 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
-from PIL import Image, ImageDraw, ImageFont
 
 DATASET_NAME = "Natural Earth 1:110m Admin 0 Countries"
 DATASET_VERSION = "5.1.1"
@@ -291,7 +290,7 @@ def _coordinates_to_pixels(
 
 
 def _draw_arrow(
-    draw: ImageDraw.ImageDraw,
+    draw: "ImageDraw.ImageDraw",
     points: list[tuple[int, int]],
     fill: tuple[int, int, int],
     width: int,
@@ -325,7 +324,12 @@ def _draw_frame(
     frame_count: int,
     width: int,
     height: int,
-) -> Image.Image:
+) -> "Image.Image":
+    # Lazy PIL import to avoid hard dependency at module load
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError as e:
+        raise MapAnimationError("PIL (Pillow) is required for map rendering but not installed.") from e
     progress = frame_index / max(1, frame_count - 1)
     eased = progress * progress * (3 - 2 * progress)
     min_x, min_y, max_x, max_y = _bounds(target)
