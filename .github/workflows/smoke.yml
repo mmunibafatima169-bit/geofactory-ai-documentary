@@ -20,6 +20,10 @@ on:
 permissions:
   contents: read
 
+env:
+  SMOKE_TOPIC: ${{ github.event.inputs.topic || 'Singapore' }}
+  SMOKE_SECONDS: ${{ github.event.inputs.seconds || '60' }}
+
 jobs:
   smoke:
     name: Full Pipeline Smoke Test
@@ -48,10 +52,8 @@ jobs:
       - name: Run smoke test
         id: smoke
         run: |
-          cd /root/geofactory-ai-documentary
-          TOPIC="${{ github.event.inputs.topic || 'Singapore' }}"
-          SECONDS="${{ github.event.inputs.seconds || '60' }}"
-          python -m geofactory smoke --topic "$TOPIC" --seconds "$SECONDS" --out output/smoke 2>&1 | tee smoke.log
+          set -o pipefail
+          python -m geofactory smoke --topic "$SMOKE_TOPIC" --seconds "$SMOKE_SECONDS" --out output/smoke 2>&1 | tee smoke.log
           echo "exit_code=${PIPESTATUS[0]}" >> $GITHUB_OUTPUT
         continue-on-error: true
       
@@ -105,7 +107,6 @@ jobs:
       
       - name: Run Remotion render using smoke plan
         run: |
-          cd /root/geofactory-ai-documentary
           # Find the smoke job output directory
           SMOKE_DIR=$(ls -dt output/smoke-* 2>/dev/null | head -1 || echo "output/smoke")
           if [ -f "$SMOKE_DIR/scene_manifest.json" ]; then
@@ -120,6 +121,6 @@ jobs:
         with:
           name: remotion-artifacts
           path: |
-            output/smoke/remotion_smoke.mp4
+            remotion_smoke.mp4
             remotion.log
           retention-days: 7

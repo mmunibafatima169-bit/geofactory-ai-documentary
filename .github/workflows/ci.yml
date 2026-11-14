@@ -36,7 +36,6 @@ jobs:
       
       - name: Run unit tests
         run: |
-          cd /root/geofactory-ai-documentary
           python -m unittest discover -v 2>&1 | tee test_output.log
       
       - name: Upload test logs
