@@ -101,6 +101,58 @@ def _package_map_scenes(package_dir: Path) -> list[Path]:
     return scenes
 
 
+def _build_transition_filter(
+    prev_idx: int,
+    curr_idx: int,
+    transition_type: str,
+    segment_duration: float,
+    config: FactoryConfig,
+) -> str:
+    """
+    Build FFmpeg filter for scene transition.
+    
+    Returns a filter string that transitions from [v{prev_idx}] to [v{curr_idx}].
+    The output is labeled as [v{curr_idx}trans] for chaining.
+    """
+    # Transition duration as fraction of segment (max 1.5s for smooth feel)
+    trans_dur = min(1.5, segment_duration * 0.15)
+    trans_frames = math.ceil(trans_dur * FRAME_RATE)
+    
+    if transition_type == "zoom_punch":
+        # Quick zoom-in/zoom-out punch transition
+        return (
+            f"[v{prev_idx}][v{curr_idx}]"
+            f"xfade=transition=zoomin:duration={trans_dur:.3f}:offset={segment_duration - trans_dur:.3f}"
+            f"[v{curr_idx}trans]"
+        )
+    elif transition_type == "wipe_map":
+        # Directional wipe (left to right for map context)
+        return (
+            f"[v{prev_idx}][v{curr_idx}]"
+            f"xfade=transition=wipeleft:duration={trans_dur:.3f}:offset={segment_duration - trans_dur:.3f}"
+            f"[v{curr_idx}trans]"
+        )
+    elif transition_type == "dip_to_black":
+        # Fade to black then fade in next scene
+        return (
+            f"[v{prev_idx}]fade=t=out:st={segment_duration - trans_dur:.3f}:d={trans_dur:.3f}[v{prev_idx}faded];"
+            f"[v{curr_idx}]fade=t=in:st=0:d={trans_dur:.3f}[v{curr_idx}faded];"
+            f"[v{prev_idx}faded][v{curr_idx}faded]"
+            f"xfade=transition=fade:duration={trans_dur:.3f}:offset={segment_duration - trans_dur:.3f}"
+            f"[v{curr_idx}trans]"
+        )
+    elif transition_type == "crossfade":
+        # Smooth cross dissolve
+        return (
+            f"[v{prev_idx}][v{curr_idx}]"
+            f"xfade=transition=fade:duration={trans_dur:.3f}:offset={segment_duration - trans_dur:.3f}"
+            f"[v{curr_idx}trans]"
+        )
+    else:
+        # Default: hard cut (no transition filter, handled by concat)
+        return ""
+
+
 def render_documentary(
     config: FactoryConfig,
     manifest: dict[str, Any],
@@ -115,6 +167,7 @@ def render_documentary(
     
     Uses the scene manifest's per-scene structure and the allocated assets per scene.
     Each scene gets its allocated asset(s) rendered at the exact scene timing.
+    Implements cinematic transitions between scenes as specified by Visual Director.
     """
     # Validate inputs
     free_bytes = shutil.disk_usage(config.root).free
@@ -176,7 +229,7 @@ def render_documentary(
     map_scenes = _package_map_scenes(narration_path.parent)
     map_scene_idx = 0
     
-    # Build FFmpeg filter complex for per-scene rendering
+    # Build FFmpeg filter complex for per-scene rendering WITH transitions
     destination.parent.mkdir(parents=True, exist_ok=True)
     temporary_output = destination.with_name(
         f".{destination.stem}.{uuid.uuid4().hex}.tmp.mp4"
@@ -185,6 +238,8 @@ def render_documentary(
     concat_inputs: list[str] = []
     filters: list[str] = []
     
+    # Build scene filter outputs: each scene produces a labeled video stream [v0], [v1], etc.
+    # We'll then chain them with transitions or concat
     for idx, scene in enumerate(scenes):
         scene_id = scene["scene_id"]
         start_s = scene["start_s"]
@@ -262,9 +317,63 @@ def render_documentary(
                 f"setsar=1,format=yuv420p[v{idx}]"
             )
     
-    # Concatenate all scene videos
-    joined = "".join(f"[v{idx}]" for idx in range(len(scenes)))
-    filters.append(f"{joined}concat=n={len(scenes)}:v=1:a=0[vout]")
+    # Build transition chain between consecutive scenes
+    # We process scenes sequentially, applying transitions where specified
+    # The transition type belongs to the CURRENT scene (how it enters relative to previous)
+    if len(scenes) == 1:
+        # Single scene - direct output
+        filters.append("[v0]copy[vout]")
+    else:
+        # Multiple scenes: build chain
+        # Start with first scene
+        current_label = "[v0]"
+        
+        for i in range(1, len(scenes)):
+            prev_label = current_label
+            curr_label = f"[v{i}]"
+            prev_duration = scenes[i-1]["end_s"] - scenes[i-1]["start_s"]
+            # Transition type of CURRENT scene (how it enters)
+            transition_type = scenes[i].get("transition", "cut")
+            
+            if transition_type == "cut":
+                # Hard cut: pass previous through, next becomes current
+                # We'll concat all "cut" segments at the end
+                filters.append(f"{prev_label}copy[v{i-1}out]")
+                current_label = curr_label
+            else:
+                # Smooth transition using xfade between previous output and current scene
+                trans_filter = _build_transition_filter(
+                    i-1, i, transition_type, prev_duration, config
+                )
+                if trans_filter:
+                    filters.append(trans_filter)
+                    # Transition output becomes the new current
+                    current_label = f"[v{i}trans]"
+                else:
+                    # Fallback to cut
+                    filters.append(f"{prev_label}copy[v{i-1}out]")
+                    current_label = curr_label
+        
+        # Final concat: collect all "out" labels + final current_label
+        # Count how many scenes we have
+        n = len(scenes)
+        out_labels = []
+        
+        # Add all intermediate "out" labels from cuts
+        for i in range(n - 1):
+            if scenes[i+1].get("transition", "cut") == "cut":
+                out_labels.append(f"[v{i}out]")
+        
+        # The final segment is either a transition output or the last scene raw
+        if scenes[-1].get("transition", "cut") == "cut":
+            out_labels.append(current_label)  # last scene raw
+        else:
+            out_labels.append(current_label)  # transition output
+        
+        if len(out_labels) == 1:
+            filters.append(f"{out_labels[0]}copy[vout]")
+        else:
+            filters.append(f"{''.join(out_labels)}concat=n={len(out_labels)}:v=1:a=0[vout]")
     
     # Audio: narration + optional music
     narration_idx = len(scenes)
@@ -375,3 +484,4 @@ def render_documentary_from_plan(
         subtitles_path=subtitles_path,
         destination=destination,
     )
+

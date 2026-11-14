@@ -44,6 +44,7 @@ from geofactory.media.video_editor import RenderError, render_video
 from geofactory.media.documentary_renderer import render_documentary_from_plan, DocumentaryRenderError
 from geofactory.media.shorts_generator import generate_shorts_from_documentary, ShortsRenderError
 from geofactory.pipeline.orchestrator import run_pipeline_from_cli, PipelineError
+from geofactory.media.remotion_renderer import render_documentary_remotion, RemotionRendererError
 from geofactory.publishing.youtube_client import upload_approved_video
 from geofactory.quality.qa_engine import assert_approvable, run_qa, validate_srt
 from geofactory.scheduler.worker import process_offline_job, recover_and_process
@@ -169,6 +170,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     doc_render.add_argument("job_id")
     doc_render.add_argument("--output", default="final.mp4", help="Output filename in package directory")
+
+    remotion_render = sub.add_parser(
+        "remotion-render", help="Render full documentary via Remotion motion graphics engine (1080p)"
+    )
+    remotion_render.add_argument("job_id")
+    remotion_render.add_argument("--output", default="remotion_final.mp4", help="Output filename in package directory")
+    remotion_render.add_argument("--composition", default="DynamicDocumentary", help="Remotion composition ID")
+
     shorts = sub.add_parser(
         "shorts", help="Generate YouTube Shorts (15-60s vertical) from documentary assets"
     )
@@ -873,6 +882,47 @@ def run(args: argparse.Namespace) -> int:
         target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
         transition_job(db, args.job_id, target, "QA completed after documentary render.")
         print(f"Documentary render complete. Status: {target}; critical failures: {report['critical_failures']}")
+    elif args.command == "remotion-render":
+        job = get_job(db, args.job_id)
+        package = Path(job["output_dir"])
+        
+        # Check that documentary plan exists
+        plan_path = package / "documentary_plan.json"
+        manifest_path = package / "scene_manifest.json"
+        allocations_path = package / "asset_allocations.json"
+        
+        for p in [plan_path, manifest_path, allocations_path]:
+            if not p.is_file():
+                raise SystemExit(f"Documentary plan not complete. Missing: {p.name}. Run 'plan-documentary' first.")
+        
+        # Check narration and subtitles
+        narration_path = package / "narration.wav"
+        subtitles_path = package / "subtitles.srt"
+        if not narration_path.is_file():
+            raise SystemExit(f"Narration not found: {narration_path}. Run 'narrate' first.")
+        if not subtitles_path.is_file():
+            raise SystemExit(f"Subtitles not found: {subtitles_path}. Run 'narrate' first.")
+        
+        # Check job status
+        if job["status"] not in {"awaiting_review", "qa_failed"}:
+            raise ValueError(f"Remotion render requires awaiting_review or qa_failed, got {job['status']}.")
+        
+        transition_job(db, args.job_id, "rendering", "Owner requested Remotion documentary render from plan.")
+        
+        try:
+            output_path = package / args.output
+            render_documentary_remotion(config, args.job_id, package, output_path)
+        except (RemotionRendererError, OSError, RuntimeError, ValueError, subprocess.SubprocessError) as exc:
+            transition_job(
+                db, args.job_id, "qa_failed", "Remotion documentary render did not complete.",
+                error=str(exc)
+            )
+            raise
+        
+        report = run_qa(db, args.job_id, config)
+        target = "qa_failed" if report["approval_blocked"] else "awaiting_approval"
+        transition_job(db, args.job_id, target, "QA completed after Remotion documentary render.")
+        print(f"Remotion documentary render complete. Status: {target}; critical failures: {report['critical_failures']}")
     elif args.command == "shorts":
         job = get_job(db, args.job_id)
         package = Path(job["output_dir"])
