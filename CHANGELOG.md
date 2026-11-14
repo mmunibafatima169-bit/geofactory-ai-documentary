@@ -4,9 +4,26 @@ All entries reference actual commits, test results, or file evidence. No invente
 
 ---
 
-## [Unreleased] - 2026-11-12 (Branch: feature/documentary-planner, Commit: f63a022)
+## [Unreleased] - 2026-11-12 (Branch: feature/documentary-planner, Commit: c8c7425)
 
-### Critical Fixes (This Session)
+### Cinematic Scene Transitions (This Session)
+
+#### Documentary Renderer
+- **ADDED**: Cinematic scene transitions using Visual Director's transition specifications
+  - Implemented `_build_transition_filter()` helper generating FFmpeg xfade/fade filters
+  - Supported transitions: `zoom_punch` (zoom in/out punch), `wipe_map` (directional wipe), `dip_to_black` (fade to black), `crossfade` (smooth dissolve), `cut` (hard cut)
+  - Transition duration scales with segment length: max 1.5s, 15% of segment duration
+  - Renderer reads `transition` field from ScenePlan (set by Visual Director per scene)
+  - Evidence: `geofactory/media/documentary_renderer.py` lines 70-130
+
+#### Test Infrastructure
+- **ADDED**: Transition filter unit tests (`tests/test_transitions.py`)
+  - 8 tests covering all transition types: zoom_punch, wipe_map, dip_to_black, crossfade, cut, unknown
+  - Tests verify filter structure, duration scaling, offset calculation
+  - All tests PASS without requiring FFmpeg/PIL
+  - Evidence: `tests/test_transitions.py` — 8 PASS
+
+### Critical Fixes (Previous Session)
 
 #### Pipeline Orchestrator
 - **FIXED**: Job-status transitions now reconcile with `core/jobs.py` STATUSES/TRANSITIONS
@@ -28,7 +45,7 @@ All entries reference actual commits, test results, or file evidence. No invente
 - **ADDED**: `FACT_CHECK` pipeline stage between script and plan
   - Runs `verify_fact_ledger()` on source_ledger.json + script narration
   - Blocks pipeline on critical findings (conflicting numbers, unsourced display numbers, missing claim sources)
-  - Flags human_verification_needed for unverified claims (allows continuation but logs warning)
+  - Flags `human_verification_needed` for unverified claims (allows continuation but logs warning)
   - Evidence: `run_fact_check_stage()` in `geofactory/pipeline/orchestrator.py` lines 140-180
 
 #### Shorts Generator
@@ -44,11 +61,20 @@ All entries reference actual commits, test results, or file evidence. No invente
   - Returns `actual_duration` in stage result, measured via FFprobe on output file
   - Evidence: `run_shorts_stage()` in `geofactory/pipeline/orchestrator.py` lines 290-300
 
-### New Modules Added
+### Test Infrastructure (Previous Session)
+- **ADDED**: FFmpeg integration tests with synthetic fixtures (`tests/test_render_integration.py`)
+  - 11 tests covering video_editor, documentary_renderer, shorts_generator
+  - Uses FFmpeg lavfi (testsrc, sine) for synthetic video/audio fixtures
+  - Tests properly skipped when FFmpeg/PIL unavailable (sandbox limitation)
+  - Tests verify output file exists, correct duration, valid container, stream types
+
+### New Modules Added (Since 49d22d7)
 - `geofactory/pipeline/orchestrator.py` - 8-stage pipeline with checkpoint/resume
 - `geofactory/media/documentary_renderer.py` - Per-scene FFmpeg rendering from plan
 - `geofactory/media/shorts_generator.py` - YouTube Shorts with synced subtitles
 - `geofactory/studio/documentary_planner.py` - Chapter planning, scene manifest generation
+- `tests/test_render_integration.py` - FFmpeg integration tests with synthetic fixtures
+- `tests/test_transitions.py` - Cinematic transition filter unit tests
 
 ### New CLI Commands
 - `plan-documentary JOB_ID --duration 600` - Creates documentary_plan.json, scene_manifest.json, asset_allocations.json
@@ -61,9 +87,12 @@ All entries reference actual commits, test results, or file evidence. No invente
 - `tests/test_documentary_renderer.py` - 6 tests (skipped: needs PIL)
 - `tests/test_shorts_generator.py` - 8 tests (skipped: needs PIL)
 - `tests/test_pipeline_orchestrator.py` - 7 tests (skipped: needs PIL)
+- `tests/test_render_integration.py` - 11 tests (skipped: needs FFmpeg/PIL)
+- `tests/test_transitions.py` - 8 tests (all PASS) — **NEW THIS SESSION**
 
 ### Cleanup
 - Removed 6 duplicate continuity docs from `geofactory/` subfolder (kept repo-root canonical copies)
+- Corrected continuity documents using actual Git history (baseline commit 188e0a4 NOT FOUND)
 
 ---
 
@@ -143,3 +172,4 @@ All entries reference actual commits, test results, or file evidence. No invente
 
 ### Post-render Memory Snapshot
 - Record memory snapshot after render
+

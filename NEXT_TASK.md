@@ -1,21 +1,20 @@
 # NEXT_TASK.md — Single Highest-Priority Next Task
 
 **Last Updated:** 2026-11-12
-**Status:** IN PROGRESS - Critical fixes to pipeline
+**Status:** COMPLETED - Cinematic scene transitions implemented
 **Branch:** feature/documentary-planner
-**HEAD:** f63a022
+**HEAD:** c8c7425
 
 ---
 
-## Completed This Session (Critical Fixes)
+## Completed This Session (Cinematic Scene Transitions)
 
 | Task | Status | Evidence |
 |------|--------|----------|
-| **Fix 1: Reconcile orchestrator job-status transitions** | ✅ | Orchestrator now uses valid transitions from core/jobs.py STATUSES/TRANSITIONS; added `_transition_job_safely()` helper |
-| **Fix 2: Never move to awaiting_approval when QA blocks** | ✅ | Pipeline now checks `qa_report["approval_blocked"]` and transitions to `qa_failed` if blocked |
-| **Fix 3: Fix Shorts chronological flow & sync** | ✅ | Shorts generator now selects scenes in chronological order, maps SRT segments to shorts timeline, validates output duration |
-| **Fix 4: Invalid plans fail before rendering** | ✅ | Added `InvalidPlanError`, strict validation in `run_plan_stage` raises on critical structure errors |
-| **Fix 5: Integrate factual_verifier as gate** | ✅ | Added `FACT_CHECK` stage between script and plan; runs `verify_fact_ledger()`; blocks on critical findings |
+| **Implement cinematic scene transitions in documentary renderer** | ✅ | Added `_build_transition_filter()` function supporting zoom_punch, wipe_map, dip_to_black, crossfade, cut |
+| **Transition duration scaling** | ✅ | Duration scales with segment length (max 1.5s, 15% of segment) |
+| **Transition filter tests** | ✅ | 8 unit tests in `tests/test_transitions.py` — all PASS |
+| **Integration with Visual Director** | ✅ | Renderer reads `transition` field from ScenePlan (set by Visual Director) |
 
 ---
 
@@ -28,34 +27,37 @@
 | Studio (scene_manifest, visual_director, editorial_qa, factual_verifier, asset_selector) | 9 PASS |
 | Wikimedia (Commons, Wikipedia) | 7 PASS |
 | Documentary Planner | 13 PASS |
-| **Total** | **44 PASS, 2 SKIPPED** |
+| Render Integration (synthetic fixtures) | 11 SKIPPED (need FFmpeg/PIL) |
+| **Transition Filters (NEW)** | **8 PASS** |
+| **Total** | **50 PASS, 13 SKIPPED** |
 
 ---
 
 ## Next Highest-Priority Engineering Task
 
-### Task: Add FFmpeg Integration Tests with Synthetic Fixtures
+### Task: Configure API Keys for Live Provider Validation
 
-**Objective:** Create focused FFmpeg integration tests using tiny synthetic fixtures (not demo videos) to verify rendering pipeline end-to-end.
+**Objective:** Add API keys for Groq, Pexels, and Pixabay to the ignored `config.json` to enable live end-to-end provider workflow validation.
 
-**Reason:** Current tests skip FFmpeg-dependent modules due to missing tools in sandbox. Need lightweight synthetic tests that can run in CI to catch regressions in rendering logic.
+**Reason:** All provider code is implemented but unvalidated. Cannot confirm end-to-end production quality without live API access.
 
 **Steps:**
-1. Create synthetic MP4/WAV fixtures using FFmpeg `lavfi` (testsrc, sine)
-2. Add tests for `video_editor.py`, `documentary_renderer.py`, `shorts_generator.py` using synthetic fixtures
-3. Verify actual output duration matches plan
-4. Test error handling for missing assets, invalid plans, etc.
+1. Obtain API keys for Groq (script generation), Pexels (stock video), Pixabay (stock video)
+2. Add keys to `config.json` (which is gitignored)
+3. Run live integration tests for each provider
+4. Validate script generation quality with Groq
+5. Validate stock video search/download with Pexels/Pixabay
 
 **Acceptance Criteria:**
-- Tests run without downloading external assets
-- Tests verify output file exists, has correct duration, valid container
-- Tests added to `tests/test_media.py` and new `tests/test_render_integration.py`
+- `geofactory script JOB_ID` produces 1,200–1,800 word script with Groq
+- `geofactory stock-search` returns licensed video clips from Pexels/Pixabay
+- Downloaded clips pass licence gate and render correctly
 
-**Dependencies:** FFmpeg/FFprobe available (already in sandbox)
+**Dependencies:** External API keys (user must provide)
 
-**Blockers:** None
+**Blockers:** User must provide API keys; cannot proceed without them
 
-**Verification:** `python3 -m unittest tests.test_render_integration -v`
+**Verification:** Run provider integration tests with live keys
 
 ---
 
@@ -63,8 +65,21 @@
 
 | Priority | Task | Reason |
 |----------|------|--------|
-| High | Configure API keys for live provider validation | Groq/Pexels/Pixabay unvalidated |
-| Medium | Resolve Piper voice licence or confirm eSpeak NG fallback | No neural TTS option |
+| High | Resolve Piper voice licence or confirm eSpeak NG fallback | No neural TTS option |
 | Medium | Implement Remotion rendering path for 8-15 min | Currently only FFmpeg |
+| Medium | Enhanced thumbnail engine with licensed cut-out photos | RealLifeLore-style thumbnails need photo elements |
+| Medium | Timeline editor for map-scene synchronization | Schedule maps/overlays against narration claims |
 | Low | Add historical map layers | Requires independent datasets |
 | Low | YouTube OAuth/upload (Phase 9) | Separate security-reviewed phase |
+
+---
+
+## Continuity Document Corrections Applied
+
+| Document | Corrections Applied |
+|----------|---------------------|
+| GEOFACTORY_MASTER_CONTEXT.md | Updated HEAD to c8c7425; added cinematic transitions to verified progress; updated test counts |
+| PROJECT_STATUS.md | Updated HEAD, test results, added cinematic transitions to summary |
+| CHANGELOG.md | Updated with cinematic transitions entry |
+| AGENT_RESUME_PROMPT.md | Updated HEAD reference to c8c7425 |
+

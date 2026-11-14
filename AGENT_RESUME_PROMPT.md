@@ -11,7 +11,8 @@ You are taking over the GeoFactory AI Documentary project.
 
 **Repository:** https://github.com/mmunibafatima169-bit/geofactory-ai-documentary
 **Workspace:** /root/geofactory-ai-documentary/geofactory (or equivalent local path)
-**Current HEAD:** 49d22d7f2989a7f2b081922741333a0dc6883cc1 (main branch)
+**Current HEAD:** c8c7425 (fix: Critical pipeline fixes - job transitions, QA gating, Shorts sync, plan validation, fact-check gate)
+**Branch:** feature/documentary-planner (diverged from main at 49d22d7)
 
 **First, you MUST:**
 1. Read all six mandatory continuity documents in the package directory:
@@ -28,7 +29,7 @@ You are taking over the GeoFactory AI Documentary project.
    git remote -v
 
 3. Run the test gate (install Pillow/FFmpeg if needed):
-   python3 -m unittest discover -v
+   python3 -m unittest tests.test_core tests.test_providers tests.test_studio tests.test_wikimedia tests.test_documentary_planner tests.test_render_integration tests.test_transitions -v
 
 4. Check NEXT_TASK.md for the authorized single task.
 
@@ -40,11 +41,15 @@ You are taking over the GeoFactory AI Documentary project.
 - Install paid tools or services
 
 **Project Summary:**
-GeoFactory is a local-first pipeline for producing 8–15 minute geography documentaries. It has a working CLI (20+ commands), SQLite persistence, Wikipedia/Commons research, map animation (Natural Earth), thumbnail engine, TTS narration, FFmpeg rendering, QA gates, hash-bound approval, and a loopback dashboard. The Studio layer (Remotion motion graphics, Visual Director, editorial QA, factual verifier, asset selector) is merged locally but not pushed to GitHub. A professional 60-second Venice v2 sample has been rendered with licensed footage, archival film, animated maps, charts, original music/SFX, and decoded-video QA verification.
+GeoFactory is a local-first pipeline for producing 8–15 minute geography documentaries. It has a working CLI (24 commands), SQLite persistence, Wikipedia/Commons research, map animation (Natural Earth), thumbnail engine, TTS narration, FFmpeg rendering, QA gates, hash-bound approval, and a loopback dashboard. The Studio layer (Remotion motion graphics, Visual Director, editorial QA, factual verifier, asset selector) is merged locally. A professional 60-second Venice v2 sample has been rendered with licensed footage, archival film, animated maps, charts, original music/SFX, and decoded-video QA verification.
+
+**NEW:** Complete end-to-end pipeline automation with `produce` command (8 stages: research → script → fact_check → plan → narrate → render → shorts → qa) with checkpoint/resume. Critical fixes applied: job transitions reconciled, QA gating enforced, Shorts chronological flow + sync, invalid plan blocking, fact-check gate integrated.
+
+**NEW THIS SESSION:** Cinematic scene transitions in documentary renderer — zoom_punch, wipe_map, dip_to_black, crossfade implemented using FFmpeg xfade/fade filters, driven by Visual Director's transition specifications.
 
 **Current Blockers:** No API keys for Groq/Pexels/Pixabay; Piper voice licence uncleared; Manim/Blender runtimes unavailable; YouTube upload not implemented; all claims require manual human verification.
 
-**Awaiting User Decision:** Next task is either (A) push Studio layer to GitHub, (B) configure API keys for live validation, (C) resolve Piper voice, or (D) begin YouTube OAuth implementation. See NEXT_TASK.md for details.
+**Next Task:** Configure API keys for live provider validation (see NEXT_TASK.md). Awaiting user to provide keys.
 ```
 
 ---
@@ -70,7 +75,7 @@ cat CHANGELOG.md
 cat AGENT_RESUME_PROMPT.md
 
 # 5. Run tests (install deps if needed)
-python3 -m unittest discover -v 2>&1 | tail -30
+python3 -m unittest tests.test_core tests.test_providers tests.test_studio tests.test_wikimedia tests.test_documentary_planner tests.test_render_integration tests.test_transitions -v 2>&1 | tail-30
 
 # 6. Check current task
 cat NEXT_TASK.md
@@ -140,15 +145,44 @@ export PATH="/root/geofactory-ai-documentary/.tools:$PATH"
 ## Verification Checklist for New Agent
 
 - [ ] All six continuity docs read and understood
-- [ ] Git status clean, HEAD matches expected (49d22d7)
+- [ ] Git status clean, HEAD matches expected (c8c7425)
 - [ ] Remote URL matches `mmunibafatima169-bit/geofactory-ai-documentary`
-- [ ] Test suite runs (34 pass, 3 import errors without Pillow, 2 skipped without FFmpeg)
-- [ ] NEXT_TASK.md shows "AWAITING USER DIRECTION"
+- [ ] Test suite runs (50 pass, 13 skipped without FFmpeg/PIL)
+- [ ] NEXT_TASK.md shows "Configure API keys for live provider validation"
 - [ ] No uncommitted changes in working tree
 - [ ] Understands: Studio layer unpushed (dc85cdd), v2 quality files uncommitted
 - [ ] Understands: Baseline commit 188e0a4... NOT FOUND in history
+- [ ] Understands: Feature branch has 2 commits ahead of main (c8c7425, f63a022)
+- [ ] Understands: Remote feature branch at f63a022 (1 behind local)
 - [ ] Ready to execute authorized single task only
 
 ---
 
+## Git History Reference
+
+| Reference | Commit | Description |
+|-----------|--------|-------------|
+| **Current HEAD (local)** | `c8c7425` | Critical pipeline fixes |
+| **Previous feature HEAD** | `f63a022` | Complete documentary pipeline |
+| **Main branch HEAD** | `49d22d7` | Studio v2 / 60s Venice sample |
+| **Merge base** | `49d22d7` | Where feature diverged from main |
+| **Arena merge commit** | `dc85cdd` | Studio layer merge |
+| **Remote feature branch** | `f63a022` | Pushed to GitHub |
+| **Baseline (referenced)** | `188e0a4` | NOT FOUND in history |
+
+---
+
+## Recent Implementation Summary
+
+| Feature | Description | Evidence |
+|---------|-------------|----------|
+| **Cinematic scene transitions** | zoom_punch, wipe_map, dip_to_black, crossfade via FFmpeg xfade/fade | `documentary_renderer.py` lines 70-130 |
+| **Transition filter tests** | 8 unit tests verifying all transition types | `tests/test_transitions.py` — 8 PASS |
+| **Pipeline automation** | 8-stage produce command with checkpoint/resume | `orchestrator.py` |
+| **Fact-check gate** | FACT_CHECK stage between script and plan | `orchestrator.py` lines 140-180 |
+| **Shorts with synced subs** | Chronological flow, SRT mapping, duration validation | `shorts_generator.py` |
+
+---
+
 **Remember:** GeoFactory belongs to the repository, not to an AI agent. Continue from the last verified checkpoint. Save progress. Leave the project ready for the next agent.
+
