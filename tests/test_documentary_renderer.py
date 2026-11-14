@@ -15,6 +15,7 @@ try:
         render_documentary,
         render_documentary_from_plan,
         _package_map_scenes,
+        DocumentaryRenderError,
     )
     from geofactory.core.config import FactoryConfig
     from geofactory.core.database import Database
@@ -271,11 +272,12 @@ class DocumentaryRendererIntegrationTests(unittest.TestCase):
         mock_duration.return_value = 60.0
         
         # Remove plan files
-        (self.package_dir / "scene_manifest.json").unlink()
+        (self.package_dir / "scene_manifest.json").unlink(missing_ok=True)
         
-        with self.assertRaises(Exception) as ctx:
+        with self.assertRaises(DocumentaryRenderError) as ctx:
             render_documentary_from_plan(self.config, self.job_id, self.package_dir, self.package_dir / "final.mp4")
-        self.assertIn("Documentary plan not complete", str(ctx.exception))
+        # Check for key substring - scene manifest not found
+        self.assertIn("Scene manifest", str(ctx.exception))
 
     @patch('geofactory.media.documentary_renderer.shutil.which')
     @patch('geofactory.media.documentary_renderer.subprocess.run')

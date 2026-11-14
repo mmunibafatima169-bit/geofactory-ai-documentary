@@ -116,6 +116,7 @@ def load_pipeline_state(package_dir: Path) -> PipelineState | None:
 def save_pipeline_state(package_dir: Path, state: PipelineState) -> None:
     """Save pipeline state to checkpoint file."""
     state.updated_at = datetime.utcnow().isoformat()
+    package_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = package_dir / CHECKPOINT_FILE
     checkpoint_path.write_text(json.dumps(state.to_dict(), indent=2), encoding="utf-8")
 

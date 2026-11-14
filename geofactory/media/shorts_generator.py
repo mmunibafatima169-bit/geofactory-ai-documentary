@@ -533,6 +533,8 @@ def render_shorts(
     # Concatenate all scene videos
     joined = "".join(f"[v{idx}]" for idx in range(len(plan.scenes)))
     filters.append(f"{joined}concat=n={len(plan.scenes)}:v=1:a=0[vout]")
+    # Apply final scale/crop/setsar to [vout] inside filter_complex (not -vf)
+    filters.append(f"[vout]scale={SHORTS_WIDTH}:{SHORTS_HEIGHT}:force_original_aspect_ratio=increase,crop={SHORTS_WIDTH}:{SHORTS_HEIGHT},setsar=1,format=yuv420p[vfinal]")
     
     # Audio: narration (trimmed to Shorts duration) + optional music
     narration_idx = len(plan.scenes)
@@ -566,7 +568,7 @@ def render_shorts(
         "-filter_complex_threads", "1",
         *concat_inputs,
         "-filter_complex", ";".join(filters),
-        "-map", "[vout]",
+        "-map", "[vfinal]",
         "-map", audio_map,
         "-map", f"{subtitle_idx}:0",
         "-t", f"{actual_duration:.6f}",
@@ -578,7 +580,6 @@ def render_shorts(
         "-c:s", "mov_text",
         "-metadata:s:s:0", "language=eng",
         "-movflags", "+faststart",
-        "-vf", f"scale={SHORTS_WIDTH}:{SHORTS_HEIGHT}:force_original_aspect_ratio=increase,crop={SHORTS_WIDTH}:{SHORTS_HEIGHT},setsar=1",
         str(temporary_output),
     ]
     

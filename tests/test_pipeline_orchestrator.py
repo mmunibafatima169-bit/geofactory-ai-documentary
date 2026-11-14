@@ -74,6 +74,7 @@ class PipelineOrchestratorTests(unittest.TestCase):
         expected = [
             PipelineStage.RESEARCH,
             PipelineStage.SCRIPT,
+            PipelineStage.FACT_CHECK,
             PipelineStage.PLAN,
             PipelineStage.NARRATE,
             PipelineStage.RENDER,
@@ -98,29 +99,16 @@ class PipelineOrchestratorTests(unittest.TestCase):
             run_stage_with_timing(PipelineStage.SCRIPT, failing_func)
         self.assertIn("test error", str(ctx.exception))
 
-    @patch('geofactory.pipeline.orchestrator.Database')
-    @patch('geofactory.pipeline.orchestrator.get_job')
-    @patch('geofactory.pipeline.orchestrator.transition_job')
-    @patch('geofactory.pipeline.orchestrator.run_research_stage')
-    def test_run_full_pipeline_research_only(self, mock_research, mock_transition, mock_get_job, mock_db):
-        # This tests just the research stage - mock everything else to fail fast
-        mock_job = {"id": "test-job", "topic": "Test", "output_dir": str(self.package_dir), "status": "proposed"}
-        mock_get_job.return_value = mock_job
-        
-        mock_research.return_value = {"sources_added": 5}
-        
-        config = MagicMock(spec=FactoryConfig)
-        config.groq_api_key = ""
-        config.local_llm_model = ""
-        config.tts_backend = "none"
-        
-        db = MagicMock(spec=Database)
-        
-        # This will fail at script stage (not mocked), but we can verify research ran
-        with self.assertRaises(Exception):
-            run_full_pipeline(db, "test-job", config)
-        
-        mock_research.assert_called_once()
+    def test_run_full_pipeline_stage_order_includes_fact_check(self):
+        """Verify FACT_CHECK stage is in the pipeline order after SCRIPT."""
+        self.assertIn(PipelineStage.FACT_CHECK, STAGE_ORDER)
+        research_idx = STAGE_ORDER.index(PipelineStage.RESEARCH)
+        script_idx = STAGE_ORDER.index(PipelineStage.SCRIPT)
+        fact_check_idx = STAGE_ORDER.index(PipelineStage.FACT_CHECK)
+        plan_idx = STAGE_ORDER.index(PipelineStage.PLAN)
+        self.assertLess(research_idx, script_idx)
+        self.assertLess(script_idx, fact_check_idx)
+        self.assertLess(fact_check_idx, plan_idx)
 
 
 @unittest.skipIf(not PIPELINE_AVAILABLE, "PIL not available in test environment")

@@ -1013,7 +1013,6 @@ def _cmd_smoke(args, config) -> int:
     import sys
     import tempfile
     import time
-    from pathlib import Path
     
     from geofactory.agents.research_agent import import_ledger
     from geofactory.media.documentary_renderer import render_documentary_from_plan
@@ -1855,7 +1854,6 @@ def run(args: argparse.Namespace) -> int:
         import sys
         import tempfile
         import time
-        from pathlib import Path
         # Lazy imports inside try blocks to avoid PIL dependency at CLI parse time
         
         # Output directory

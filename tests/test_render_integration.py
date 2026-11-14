@@ -308,7 +308,7 @@ class VideoEditorIntegrationTests(unittest.TestCase):
                 (
                     "stock-video", job["id"], "Synthetic stock clip", "Test",
                     str(video), "https://example.invalid/synthetic-video",
-                    "Synthetic fixture", "Test License",
+                    "Synthetic fixture", "CC0-1.0",
                     "https://example.invalid/license",
                     "Synthetic fixture, Test License",
                     hashlib.sha256(video.read_bytes()).hexdigest(), "2026-01-01T00:00:00Z",
