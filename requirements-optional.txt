@@ -1,0 +1,13 @@
+# Optional dependencies for live provider integration
+# These require API keys and network access
+# Install with: pip install -r requirements-optional.txt
+
+# Neural TTS via Edge TTS (requires network)
+edge-tts>=7.3.1
+
+# Groq LLM for script generation (requires API key)
+groq>=1.7.0
+
+# Note: espeak-ng is a system binary, install via apt: apt-get install -y espeak-ng
+# Note: Piper TTS requires separate binary and voice model
+# Note: gTTS not included - decision pending on whether to use it

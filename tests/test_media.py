@@ -10,20 +10,28 @@ import zlib
 from dataclasses import replace
 from pathlib import Path
 
-from geofactory.core.config import FactoryConfig
-from geofactory.core.database import Database
-from geofactory.core.jobs import create_job
-from geofactory.media.asset_manager import register_asset, register_music_asset
-from geofactory.media.thumbnail_maker import make_thumbnail
-from geofactory.media.tts_engine import (
-    TTSError, _validate_audio_chunk, audio_duration_seconds, split_sentences,
-    synthesize,
-)
-from geofactory.media.video_editor import RenderError, probe_video, render_video
-from geofactory.quality.qa_engine import validate_srt
-
+# Check for PIL and dependent modules availability
+try:
+    from geofactory.core.config import FactoryConfig
+    from geofactory.core.database import Database
+    from geofactory.core.jobs import create_job
+    from geofactory.media.asset_manager import register_asset, register_music_asset
+    from geofactory.media.thumbnail_maker import make_thumbnail
+    from geofactory.media.tts_engine import (
+        TTSError, _validate_audio_chunk, audio_duration_seconds, split_sentences,
+        synthesize,
+    )
+    from geofactory.media.video_editor import RenderError, probe_video, render_video
+    from geofactory.quality.qa_engine import validate_srt
+    MEDIA_MODULES_AVAILABLE = True
+except ImportError as e:
+    if "PIL" in str(e) or "Pillow" in str(e):
+        MEDIA_MODULES_AVAILABLE = False
+    else:
+        raise
 
 MEDIA_TOOLS = all(shutil.which(tool) for tool in ("espeak-ng", "ffmpeg", "ffprobe"))
+MEDIA_TOOLS_NO_ESPEAK = all(shutil.which(tool) for tool in ("ffmpeg", "ffprobe"))
 
 
 def _png_chunk(kind: bytes, data: bytes) -> bytes:
@@ -44,6 +52,7 @@ def _write_test_png(path: Path) -> None:
     )
 
 
+@unittest.skipUnless(MEDIA_MODULES_AVAILABLE, "PIL (Pillow) not available - required for video_editor via map_animation_engine")
 class MediaIntegrationTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -117,7 +126,7 @@ class MediaIntegrationTests(unittest.TestCase):
         last_end = subtitles.read_text(encoding="utf-8").strip().splitlines()[-2].split(" --> ")[1]
         self.assertAlmostEqual(duration, _timestamp_seconds(last_end), delta=0.02)
 
-    @unittest.skipUnless(MEDIA_TOOLS, "FFmpeg/FFprobe are required")
+    @unittest.skipUnless(MEDIA_TOOLS_NO_ESPEAK, "FFmpeg/FFprobe are required")
     def test_nearly_silent_audio_chunk_is_rejected(self) -> None:
         import subprocess
 
@@ -169,7 +178,7 @@ class MediaIntegrationTests(unittest.TestCase):
         self.assertEqual((video["width"], video["height"]), (320, 180))
         self.assertEqual(validate_srt(subtitles), [])
 
-    @unittest.skipUnless(MEDIA_TOOLS, "FFmpeg/FFprobe and eSpeak NG are required")
+    @unittest.skipUnless(MEDIA_TOOLS, "eSpeak NG and FFmpeg/FFprobe are required")
     def test_video_clips_take_priority_and_background_music_is_mixed(self) -> None:
         config = replace(self.config, tts_backend="espeak-ng")
         job = create_job(

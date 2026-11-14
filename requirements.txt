@@ -1,5 +1,28 @@
-# Optional online/documentary-quality providers. API keys remain local in ignored
-# config.json; credentials are never included in this file.
-edge-tts==7.3.1
-groq==1.7.0
-Pillow==13.0.0
+# Core dependencies for GeoFactory AI Documentary
+# All packages must be compatible with Python 3.12+
+
+# Standard library extensions
+httpx>=0.27.0
+aiohttp>=3.9.0
+
+# Image processing (required for map animation, thumbnails, video editor)
+Pillow>=10.0.0
+
+# Database
+# sqlite3 is in stdlib
+
+# Configuration
+# json, pathlib, dataclasses are in stdlib
+
+# Testing
+# unittest is in stdlib
+
+# Subprocess/FFmpeg wrappers
+# subprocess, shutil are in stdlib
+
+# TTS backends (optional - moved to requirements-optional.txt)
+# edge-tts==7.3.1
+# groq==1.7.0
+
+# Remotion (handled via npm in studio/remotion/)
+# Not a Python package
