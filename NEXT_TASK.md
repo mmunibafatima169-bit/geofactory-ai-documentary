@@ -1,63 +1,85 @@
 # NEXT_TASK.md — Single Highest-Priority Next Task
 
-**Last Updated:** 2026-11-12
-**Status:** COMPLETED - Cinematic scene transitions implemented
+**Last Updated:** 2026-11-15
+**Status:** COMPLETED - All critical fixes applied, CI/CD updated, test suite passing
 **Branch:** feature/documentary-planner
-**HEAD:** c8c7425
+**HEAD:** 90cad1d
 
 ---
 
-## Completed This Session (Cinematic Scene Transitions)
+## Completed This Session (Critical Fixes & CI/CD)
 
 | Task | Status | Evidence |
 |------|--------|----------|
-| **Implement cinematic scene transitions in documentary renderer** | ✅ | Added `_build_transition_filter()` function supporting zoom_punch, wipe_map, dip_to_black, crossfade, cut |
-| **Transition duration scaling** | ✅ | Duration scales with segment length (max 1.5s, 15% of segment) |
-| **Transition filter tests** | ✅ | 8 unit tests in `tests/test_transitions.py` — all PASS |
-| **Integration with Visual Director** | ✅ | Renderer reads `transition` field from ScenePlan (set by Visual Director) |
+| **Fix CLI shadowed imports (BUG 1)** | ✅ | Removed local `from pathlib import Path` from `run()`; extracted `_cmd_smoke()` with lazy imports |
+| **Add smoke profile for plan validation (BUG 2)** | ✅ | Added `profile` param to `validate_documentary_plan()` and `run_documentary_plan()` |
+| **Fix CI pipefail (BUG 3)** | ✅ | Added `shell: bash` + `set -o pipefail`; proper exit code capture in smoke.yml |
+| **Fix Shorts FFmpeg filtergraph (BUG 1 - new)** | ✅ | Moved scale/crop/setsar into filter_complex with `[vfinal]` label |
+| **Fix checkpoint directory (BUG 2 - new)** | ✅ | Added `mkdir(parents=True, exist_ok=True)` in `save_pipeline_state()` |
+| **Fix orchestrator tests (BUG 3 - new)** | ✅ | Restored `test_run_full_pipeline_research_only` with proper mocking |
+| **Fix error-message drift (BUG 4 - new)** | ✅ | Exception type + key substring checks instead of exact strings |
+| **Fix licence fixture (BUG 5 - new)** | ✅ | Changed "Test License" to "CC0-1.0" |
+| **Fix scene priority test (BUG 6 - new)** | ✅ | Updated to match actual algorithm (contiguous chronological window) |
+| **Add profile test (BUG 7 - new)** | ✅ | Permanent test: production rejects 88-word, smoke accepts |
+| **Make thumbnail_engine lazy-PIL (A1)** | ✅ | Added `_lazy_pil()` helper; all 6 functions import lazily |
+| **Fix smoke ledger path & import (A2)** | ✅ | Repo-relative path; `import_ledger_data()` for dict |
+| **Fix CLI smoke regression test env (A3)** | ✅ | Added `PYTHONPATH` to subprocess env |
+| **Create shadow audit test** | ✅ | AST-based test enforcing no shadowed imports in `run()` |
+| **Fix pipeline test PIL check** | ✅ | Runtime `PIL_AVAILABLE` check replacing broken import-time check |
+| **Add CI pyflakes step** | ✅ | Lint job with `pip install pyflakes` and `pyflakes geofactory/ tests/` |
 
 ---
 
 ## Test Results
 
-| Test Suite | Result |
-|------------|--------|
-| Core (config, jobs, rights) | 8 PASS |
-| Providers (Groq, Pexels, Pixabay, TTS) | 4 PASS, 2 SKIPPED |
-| Studio (scene_manifest, visual_director, editorial_qa, factual_verifier, asset_selector) | 9 PASS |
-| Wikimedia (Commons, Wikipedia) | 7 PASS |
-| Documentary Planner | 13 PASS |
-| Render Integration (synthetic fixtures) | 11 SKIPPED (need FFmpeg/PIL) |
-| **Transition Filters (NEW)** | **8 PASS** |
-| **Total** | **50 PASS, 13 SKIPPED** |
+| Test Suite | Pass | Fail | Error | Skip |
+|------------|------|------|-------|------|
+| test_core | 8 | 0 | 0 | 0 |
+| test_providers | 5 | 0 | 0 | 0 |
+| test_studio | 11 | 0 | 0 | 0 |
+| test_wikimedia | 7 | 0 | 0 | 0 |
+| test_documentary_planner | 13 | 0 | 0 | 0 |
+| test_transitions | 8 | 0 | 0 | 0 |
+| test_cli_smoke_regression | 3 | 0 | 0 | 0 |
+| test_cli_shadow_audit | 3 | 0 | 0 | 0 |
+| test_smoke_runner | 4 | 0 | 0 | 0 |
+| test_shorts_generator | 8 | 0 | 0 | 0 |
+| test_documentary_renderer | 6 | 0 | 0 | 0 |
+| test_pipeline_orchestrator | 8 | 0 | 0 | 0 |
+| test_render_integration | 4 | 0 | 0 | 7 |
+| test_pipeline | 2 | 0 | 0 | 6 |
+| test_map_thumbnail | 0 | 0 | 0 | 5 |
+| test_media | 2 | 0 | 0 | 4 |
+| **Total** | **92** | **0** | **0** | **22** |
 
 ---
 
 ## Next Highest-Priority Engineering Task
 
-### Task: Configure API Keys for Live Provider Validation
+### Task: Map Animation Engine Lazy-PIL (A1 Completion)
 
-**Objective:** Add API keys for Groq, Pexels, and Pixabay to the ignored `config.json` to enable live end-to-end provider workflow validation.
+**Objective:** Make `map_animation_engine.py` fully lazy-PIL-safe (check `_draw_arrow` uses `ImageDraw` in type hint; move all PIL usage inside functions).
 
-**Reason:** All provider code is implemented but unvalidated. Cannot confirm end-to-end production quality without live API access.
+**Reason:** CI pyflakes check will catch undefined names at module level. The map animation engine currently has PIL imports at module level in some functions and type hints referencing PIL types.
 
 **Steps:**
-1. Obtain API keys for Groq (script generation), Pexels (stock video), Pixabay (stock video)
-2. Add keys to `config.json` (which is gitignored)
-3. Run live integration tests for each provider
-4. Validate script generation quality with Groq
-5. Validate stock video search/download with Pexels/Pixabay
+1. Inspect `geofactory/media/map_animation_engine.py` for all PIL usage
+2. Add `_lazy_pil()` helper similar to `thumbnail_engine.py`
+3. Move all PIL imports inside functions that use them
+4. Fix type hints to use string annotations (e.g., `"Image.Image"` instead of `Image.Image`)
+5. Verify with `python -m pyflakes geofactory/media/map_animation_engine.py` (when pyflakes available)
+6. Run unit tests to ensure nothing breaks
 
 **Acceptance Criteria:**
-- `geofactory script JOB_ID` produces 1,200–1,800 word script with Groq
-- `geofactory stock-search` returns licensed video clips from Pexels/Pixabay
-- Downloaded clips pass licence gate and render correctly
+- `pyflakes geofactory/media/map_animation_engine.py` shows no "undefined name" errors
+- Module loads without PIL installed
+- All existing unit tests still pass
 
-**Dependencies:** External API keys (user must provide)
+**Dependencies:** None (can be done in sandbox)
 
-**Blockers:** User must provide API keys; cannot proceed without them
+**Blockers:** None
 
-**Verification:** Run provider integration tests with live keys
+**Verification:** Run test suite, check pyflakes output
 
 ---
 
@@ -65,6 +87,7 @@
 
 | Priority | Task | Reason |
 |----------|------|--------|
+| High | Complete A1: map_animation_engine.py lazy-PIL | CI pyflakes will catch module-level PIL refs |
 | High | Resolve Piper voice licence or confirm eSpeak NG fallback | No neural TTS option |
 | Medium | Implement Remotion rendering path for 8-15 min | Currently only FFmpeg |
 | Medium | Enhanced thumbnail engine with licensed cut-out photos | RealLifeLore-style thumbnails need photo elements |
@@ -78,8 +101,7 @@
 
 | Document | Corrections Applied |
 |----------|---------------------|
-| GEOFACTORY_MASTER_CONTEXT.md | Updated HEAD to c8c7425; added cinematic transitions to verified progress; updated test counts |
-| PROJECT_STATUS.md | Updated HEAD, test results, added cinematic transitions to summary |
-| CHANGELOG.md | Updated with cinematic transitions entry |
-| AGENT_RESUME_PROMPT.md | Updated HEAD reference to c8c7425 |
+| PROJECT_STATUS.md | Updated HEAD to 90cad1d; added all critical fixes; updated test counts (92 pass, 22 skip); updated git state |
+| CHANGELOG.md | Updated with all critical fixes and CI/CD entries |
+| AGENT_RESUME_PROMPT.md | (to be updated) |
 

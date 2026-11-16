@@ -11,7 +11,7 @@ You are taking over the GeoFactory AI Documentary project.
 
 **Repository:** https://github.com/mmunibafatima169-bit/geofactory-ai-documentary
 **Workspace:** /root/geofactory-ai-documentary/geofactory (or equivalent local path)
-**Current HEAD:** c8c7425 (fix: Critical pipeline fixes - job transitions, QA gating, Shorts sync, plan validation, fact-check gate)
+**Current HEAD:** 90cad1d (fix: shorts ffmpeg filtergraph, checkpoint dir, stale tests, cli shadow audit)
 **Branch:** feature/documentary-planner (diverged from main at 49d22d7)
 
 **First, you MUST:**
@@ -47,9 +47,27 @@ GeoFactory is a local-first pipeline for producing 8–15 minute geography docum
 
 **NEW THIS SESSION:** Cinematic scene transitions in documentary renderer — zoom_punch, wipe_map, dip_to_black, crossfade implemented using FFmpeg xfade/fade filters, driven by Visual Director's transition specifications.
 
+**CRITICAL FIXES THIS SESSION:**
+1. CLI shadowed imports fixed — removed local `from pathlib import Path` from `run()`; extracted `_cmd_smoke()` with lazy imports
+2. Smoke profile for plan validation — production (8-15 min) vs smoke (relaxed) modes
+3. CI pipefail fixed — proper exit code capture in GitHub Actions
+4. Shorts FFmpeg filtergraph fixed — moved scale/crop into filter_complex
+5. Checkpoint directory fix — mkdir parents before save
+6. Orchestrator tests restored — proper mocking of STAGE_FUNCTIONS
+7. Error-message drift fixed — exception type + substring checks
+8. Licence fixture fixed — CC0-1.0 for synthetic assets
+9. Scene priority test fixed — matches actual contiguous window algorithm
+10. Profile test added — production rejects 88-word, smoke accepts
+11. Thumbnail engine lazy-PIL — _lazy_pil() helper for all 6 functions
+12. Smoke ledger path fixed — repo-relative path, import_ledger_data for dict
+13. CLI regression test env fixed — PYTHONPATH for subprocess
+14. Shadow audit test created — AST-based enforcement
+15. Pipeline test PIL check fixed — runtime PIL_AVAILABLE check
+16. CI pyflakes step added — lint job with pyflakes geofactory/ tests/
+
 **Current Blockers:** No API keys for Groq/Pexels/Pixabay; Piper voice licence uncleared; Manim/Blender runtimes unavailable; YouTube upload not implemented; all claims require manual human verification.
 
-**Next Task:** Configure API keys for live provider validation (see NEXT_TASK.md). Awaiting user to provide keys.
+**Next Task:** Map Animation Engine Lazy-PIL (A1 Completion) — see NEXT_TASK.md
 ```
 
 ---
@@ -145,14 +163,14 @@ export PATH="/root/geofactory-ai-documentary/.tools:$PATH"
 ## Verification Checklist for New Agent
 
 - [ ] All six continuity docs read and understood
-- [ ] Git status clean, HEAD matches expected (c8c7425)
+- [ ] Git status clean, HEAD matches expected (90cad1d)
 - [ ] Remote URL matches `mmunibafatima169-bit/geofactory-ai-documentary`
-- [ ] Test suite runs (50 pass, 13 skipped without FFmpeg/PIL)
-- [ ] NEXT_TASK.md shows "Configure API keys for live provider validation"
+- [ ] Test suite runs (92 pass, 22 skipped without FFmpeg/PIL)
+- [ ] NEXT_TASK.md shows "Map Animation Engine Lazy-PIL (A1 Completion)"
 - [ ] No uncommitted changes in working tree
 - [ ] Understands: Studio layer unpushed (dc85cdd), v2 quality files uncommitted
 - [ ] Understands: Baseline commit 188e0a4... NOT FOUND in history
-- [ ] Understands: Feature branch has 2 commits ahead of main (c8c7425, f63a022)
+- [ ] Understands: Feature branch has 5 commits ahead of main
 - [ ] Understands: Remote feature branch at f63a022 (1 behind local)
 - [ ] Ready to execute authorized single task only
 
@@ -162,7 +180,7 @@ export PATH="/root/geofactory-ai-documentary/.tools:$PATH"
 
 | Reference | Commit | Description |
 |-----------|--------|-------------|
-| **Current HEAD (local)** | `c8c7425` | Critical pipeline fixes |
+| **Current HEAD (local)** | `90cad1d` | Critical fixes: shorts ffmpeg, checkpoint, stale tests, cli shadow audit |
 | **Previous feature HEAD** | `f63a022` | Complete documentary pipeline |
 | **Main branch HEAD** | `49d22d7` | Studio v2 / 60s Venice sample |
 | **Merge base** | `49d22d7` | Where feature diverged from main |
@@ -181,6 +199,9 @@ export PATH="/root/geofactory-ai-documentary/.tools:$PATH"
 | **Pipeline automation** | 8-stage produce command with checkpoint/resume | `orchestrator.py` |
 | **Fact-check gate** | FACT_CHECK stage between script and plan | `orchestrator.py` lines 140-180 |
 | **Shorts with synced subs** | Chronological flow, SRT mapping, duration validation | `shorts_generator.py` |
+| **CLI shadow import fix** | Removed shadowed imports from run(); lazy imports in _cmd_smoke() | `cli.py`, `test_cli_shadow_audit.py` |
+| **Smoke profile** | Production vs smoke validation modes | `documentary_planner.py`, `cli.py` |
+| **CI/CD** | GitHub Actions with pipefail, pyflakes, artifact upload | `.github/workflows/` |
 
 ---
 
