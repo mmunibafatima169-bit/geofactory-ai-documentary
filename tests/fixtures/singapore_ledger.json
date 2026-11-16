@@ -3,93 +3,93 @@
     "job_id": "smoke-singapore-test",
     "topic": "Singapore",
     "question": "How did Singapore transform from a trading port to a global financial hub?",
-    "created_at": "2026-01-01T00:00:00Z",
+    "created_at": "2026-01-01",
     "test_data": true,
     "note": "TEST DATA - NOT FOR PUBLISHING"
   },
   "sources": [
     {
-      "id": 1,
+      "id": "src-1",
       "title": "Singapore - Wikipedia",
       "url": "https://en.wikipedia.org/wiki/Singapore",
       "publisher": "Wikimedia Foundation",
-      "accessed_at": "2026-01-01T00:00:00Z",
+      "accessed_at": "2026-01-01",
       "licence": "CC BY-SA 4.0",
       "evidence": "Singapore is a sovereign island city-state in maritime Southeast Asia. It lies about one degree of latitude north of the equator."
     },
     {
-      "id": 2,
+      "id": "src-2",
       "title": "History of Singapore - Wikipedia",
       "url": "https://en.wikipedia.org/wiki/History_of_Singapore",
       "publisher": "Wikimedia Foundation",
-      "accessed_at": "2026-01-01T00:00:00Z",
+      "accessed_at": "2026-01-01",
       "licence": "CC BY-SA 4.0",
       "evidence": "Modern Singapore was founded in 1819 by Sir Stamford Raffles as a trading post of the British Empire. The Port of Singapore became one of the world's busiest."
     },
     {
-      "id": 3,
+      "id": "src-3",
       "title": "Economy of Singapore - Wikipedia",
       "url": "https://en.wikipedia.org/wiki/Economy_of_Singapore",
       "publisher": "Wikimedia Foundation",
-      "accessed_at": "2026-01-01T00:00:00Z",
+      "accessed_at": "2026-01-01",
       "licence": "CC BY-SA 4.0",
       "evidence": "Singapore has a highly developed free-market economy. It is ranked as the most open in the world, least corrupt, and most pro-business."
     }
   ],
   "claims": [
     {
-      "id": 1,
+      "id": "clm-1",
       "text": "Singapore is a sovereign island city-state in maritime Southeast Asia.",
-      "kind": "geographic",
-      "source_ids": [1],
+      "kind": "fact",
+      "source_ids": ["src-1"],
       "reviewed": true,
       "reviewer": "test",
-      "reviewed_at": "2026-01-01T00:00:00Z"
+      "reviewed_at": "2026-01-01"
     },
     {
-      "id": 2,
+      "id": "clm-2",
       "text": "Singapore lies about one degree of latitude north of the equator.",
-      "kind": "geographic",
-      "source_ids": [1],
+      "kind": "fact",
+      "source_ids": ["src-1"],
       "reviewed": true,
       "reviewer": "test",
-      "reviewed_at": "2026-01-01T00:00:00Z"
+      "reviewed_at": "2026-01-01"
     },
     {
-      "id": 3,
+      "id": "clm-3",
       "text": "Modern Singapore was founded in 1819 by Sir Stamford Raffles as a trading post.",
-      "kind": "historical",
-      "source_ids": [2],
+      "kind": "fact",
+      "source_ids": ["src-2"],
       "reviewed": true,
       "reviewer": "test",
-      "reviewed_at": "2026-01-01T00:00:00Z"
+      "reviewed_at": "2026-01-01"
     },
     {
-      "id": 4,
+      "id": "clm-4",
       "text": "The Port of Singapore became one of the world's busiest ports.",
-      "kind": "economic",
-      "source_ids": [2],
+      "kind": "fact",
+      "source_ids": ["src-2"],
       "reviewed": true,
       "reviewer": "test",
-      "reviewed_at": "2026-01-01T00:00:00Z"
+      "reviewed_at": "2026-01-01"
     },
     {
-      "id": 5,
+      "id": "clm-5",
       "text": "Singapore has a highly developed free-market economy.",
-      "kind": "economic",
-      "source_ids": [3],
+      "kind": "fact",
+      "source_ids": ["src-3"],
       "reviewed": true,
       "reviewer": "test",
-      "reviewed_at": "2026-01-01T00:00:00Z"
+      "reviewed_at": "2026-01-01"
     },
     {
-      "id": 6,
+      "id": "clm-6",
       "text": "Singapore is ranked as the most open economy in the world.",
-      "kind": "economic",
-      "source_ids": [3],
+      "kind": "fact",
+      "source_ids": ["src-3"],
       "reviewed": true,
       "reviewer": "test",
-      "reviewed_at": "2026-01-01T00:00:00Z"
+      "reviewed_at": "2026-01-01"
     }
   ]
 }

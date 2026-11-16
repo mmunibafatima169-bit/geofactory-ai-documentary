@@ -289,12 +289,22 @@ def _coordinates_to_pixels(
     return x, y
 
 
+def _lazy_pil():
+    """Lazy import of PIL modules to avoid hard dependency at module load."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        return Image, ImageDraw, ImageFont
+    except ImportError as e:
+        raise MapAnimationError("PIL (Pillow) is required for map rendering but not installed.") from e
+
+
 def _draw_arrow(
     draw: "ImageDraw.ImageDraw",
     points: list[tuple[int, int]],
     fill: tuple[int, int, int],
     width: int,
 ) -> None:
+    Image, ImageDraw, ImageFont = _lazy_pil()
     if len(points) < 2:
         return
     draw.line(points, fill=(8, 18, 30), width=width + 7, joint="curve")
@@ -325,11 +335,7 @@ def _draw_frame(
     width: int,
     height: int,
 ) -> "Image.Image":
-    # Lazy PIL import to avoid hard dependency at module load
-    try:
-        from PIL import Image, ImageDraw, ImageFont
-    except ImportError as e:
-        raise MapAnimationError("PIL (Pillow) is required for map rendering but not installed.") from e
+    Image, ImageDraw, ImageFont = _lazy_pil()
     progress = frame_index / max(1, frame_count - 1)
     eased = progress * progress * (3 - 2 * progress)
     min_x, min_y, max_x, max_y = _bounds(target)
@@ -444,8 +450,8 @@ def create_map_scene(
             or not marker.source.strip()
         ):
             raise MapAnimationError(
-                "Map markers need valid coordinates, a short label, and a recorded source."
-            )
+            "Map markers need valid coordinates, a short label, and a recorded source."
+        )
     ffmpeg = shutil.which(ffmpeg_name)
     if not ffmpeg:
         raise MapAnimationError(f"FFmpeg executable not found: {ffmpeg_name}")

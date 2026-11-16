@@ -72,6 +72,18 @@ except ImportError as e:
         raise
 
 
+# Runtime check for PIL availability
+def _pil_available() -> bool:
+    """Check if PIL is available at runtime."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+        return True
+    except ImportError:
+        return False
+
+PIL_AVAILABLE = _pil_available()
+
+
 class PipelineTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
@@ -87,7 +99,7 @@ class PipelineTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    @unittest.skipUnless(PIPELINE_MODULES_AVAILABLE, "PIL (Pillow) not available - needed for CLI via dashboard->qa_engine")
+    @unittest.skipUnless(PIL_AVAILABLE, "PIL (Pillow) not available at runtime")
     def test_offline_demo_generates_package_and_blocks_approval(self) -> None:
         job = create_job(
             self.db, "Synthetic river towns", "How is this fictional region organized?",
@@ -109,7 +121,7 @@ class PipelineTests(unittest.TestCase):
         self.assertTrue(report["approval_blocked"])
         self.assertEqual(get_job(self.db, job["id"])["status"], "qa_failed")
 
-    @unittest.skipUnless(PIPELINE_MODULES_AVAILABLE, "PIL (Pillow) not available - needed for CLI via dashboard->qa_engine")
+    @unittest.skipUnless(PIL_AVAILABLE, "PIL (Pillow) not available at runtime")
     def test_worker_processes_a_queued_job_sequentially(self) -> None:
         job = create_job(
             self.db, "Synthetic queued job", "What does this queue do?",
@@ -118,7 +130,7 @@ class PipelineTests(unittest.TestCase):
         self.assertEqual(recover_and_process(self.db, self.config, max_jobs=1), [job["id"]])
         self.assertEqual(get_job(self.db, job["id"])["status"], "qa_failed")
 
-    @unittest.skipUnless(PIPELINE_MODULES_AVAILABLE, "PIL (Pillow) not available - needed for CLI via dashboard->qa_engine")
+    @unittest.skipUnless(PIL_AVAILABLE, "PIL (Pillow) not available at runtime")
     def test_thumbnail_failure_after_render_returns_job_to_qa_failed(self) -> None:
         job = create_job(
             self.db, "Synthetic thumbnail failure", "Does a failed thumbnail recover?",
@@ -225,7 +237,7 @@ class PipelineTests(unittest.TestCase):
         with self.assertRaises(ResearchError):
             import_ledger(self.db, job["id"], invalid)
 
-    @unittest.skipUnless(PIPELINE_MODULES_AVAILABLE, "PIL (Pillow) not available - needed for CLI via dashboard->qa_engine")
+    @unittest.skipUnless(PIL_AVAILABLE, "PIL (Pillow) not available at runtime")
     def test_qa_requires_per_claim_human_review_and_synced_ledger(self) -> None:
         job = create_job(
             self.db, "Synthetic claim review test", "Does review unblock claims?",
@@ -273,7 +285,7 @@ class PipelineTests(unittest.TestCase):
         path.write_text("1\n99:99:99,000 --> 00:00:00,000\nBad\n", encoding="utf-8")
         self.assertTrue(validate_srt(path))
 
-    @unittest.skipUnless(PIPELINE_MODULES_AVAILABLE, "PIL (Pillow) not available - needed for CLI via dashboard->qa_engine")
+    @unittest.skipUnless(PIL_AVAILABLE, "PIL (Pillow) not available at runtime")
     def test_local_script_draft_requires_word_count_and_known_claim_ids(self) -> None:
         job = create_job(
             self.db, "Synthetic test topic", "How does the fictional place work?",
@@ -337,7 +349,7 @@ class PipelineTests(unittest.TestCase):
         self.assertIn("do not imitate or copy any existing creator", prompt)
         self.assertIn("disputed facts honestly", prompt)
 
-    @unittest.skipUnless(PIPELINE_MODULES_AVAILABLE, "PIL (Pillow) not available - needed for CLI via dashboard->qa_engine")
+    @unittest.skipUnless(PIL_AVAILABLE, "PIL (Pillow) not available at runtime")
     def test_documented_cli_dry_run_works_without_api_keys(self) -> None:
         config_path = self.root / "config.json"
         base = [sys.executable, "-m", "geofactory", "--config", str(config_path)]

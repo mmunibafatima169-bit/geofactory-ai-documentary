@@ -308,9 +308,13 @@ class ShortsGeneratorTests(unittest.TestCase):
             target_duration=30.0,
         )
         
-        # Should include cold_open (sc-001) as high priority
+        # Algorithm selects best CONTIGUOUS window in chronological order
+        # With target_duration=30s, best window is sc-001, sc-002, sc-003 (score 140)
+        # sc-001 (cold_open, score 55), sc-002 (engineering_demo, 45), sc-003 (archival, 40)
+        # sc-005 (closing_beat, 55) not included because window starting at sc-001 is optimal
         scene_ids = [s["scene_id"] for s in plan.scenes]
-        self.assertIn("sc-001", scene_ids)  # cold_open
+        self.assertIn("sc-001", scene_ids)  # cold_open always included (highest score start)
+        self.assertEqual(len(plan.scenes), 3)  # 3 scenes fit in 30s with 8s cap each
 
 
 @unittest.skipIf(not SHORTS_AVAILABLE, "PIL not available in test environment")

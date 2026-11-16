@@ -83,6 +83,16 @@ class ThumbnailEngineError(RuntimeError):
     """Raised when thumbnail concepts cannot be generated or verified."""
 
 
+
+def _lazy_pil():
+    """Lazy import of PIL modules to avoid hard dependency at module load."""
+    try:
+        from PIL import Image, ImageDraw, ImageFont, ImageStat
+        return Image, ImageDraw, ImageFont, ImageStat
+    except ImportError as e:
+        raise RuntimeError("PIL (Pillow) is required for thumbnail rendering but not installed.") from e
+
+
 def _headline_for(topic: str, headline: str | None) -> str:
     if headline:
         words = headline.strip().split()
@@ -100,7 +110,7 @@ def _headline_for(topic: str, headline: str | None) -> str:
 
 
 def _font(font_path: Path, size: int) -> "ImageFont.FreeTypeFont":
-    from PIL import ImageFont
+    Image, ImageDraw, ImageFont, ImageStat = _lazy_pil()
     return ImageFont.truetype(str(font_path), size=size)
 
 
@@ -121,7 +131,7 @@ def _country_view(
 
 
 def _draw_map(
-    image: Image.Image,
+    image: "Image.Image",
     collection: dict[str, Any],
     target: dict[str, Any],
     palette: dict[str, tuple[int, int, int]],
@@ -129,6 +139,7 @@ def _draw_map(
     anchor: str,
     scale: float,
 ) -> tuple[int, int]:
+    Image, ImageDraw, ImageFont, ImageStat = _lazy_pil()
     width, height = image.size
     draw = ImageDraw.Draw(image)
     view = _country_view(target, width, height, zoom)
@@ -173,13 +184,14 @@ def _draw_map(
 
 
 def _draw_arrow(
-    draw: ImageDraw.ImageDraw,
+    draw: "ImageDraw.ImageDraw",
     start: tuple[int, int],
     end: tuple[int, int],
     color: tuple[int, int, int],
     style: str,
     scale: float,
 ) -> None:
+    Image, ImageDraw, ImageFont, ImageStat = _lazy_pil()
     x1, y1 = start
     x2, y2 = end
     if style == "curved-pointer":
@@ -307,6 +319,7 @@ def _render_concept(
     font_path: Path,
     layout_variety: bool,
 ) -> tuple[dict[str, Any], int]:
+    Image, ImageDraw, ImageFont, ImageStat = _lazy_pil()
     palette = concept["palette"]
     scale = RENDER_SCALE * SUPERSAMPLE_FACTOR
     width, height = MASTER_WIDTH * SUPERSAMPLE_FACTOR, MASTER_HEIGHT * SUPERSAMPLE_FACTOR
@@ -451,6 +464,7 @@ def generate_thumbnail_concepts(
     headline: str | None = None,
 ) -> dict[str, Any]:
     """Create three original concepts, score them, and save source recipes/previews."""
+    Image, ImageDraw, ImageFont, ImageStat = _lazy_pil()
     if not topic.strip():
         raise ThumbnailEngineError("A documentary topic is required.")
     short_headline = _headline_for(topic, headline)

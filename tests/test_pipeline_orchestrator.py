@@ -110,6 +110,38 @@ class PipelineOrchestratorTests(unittest.TestCase):
         self.assertLess(script_idx, fact_check_idx)
         self.assertLess(fact_check_idx, plan_idx)
 
+    @patch('geofactory.pipeline.orchestrator.Database')
+    @patch('geofactory.pipeline.orchestrator.get_job')
+    @patch('geofactory.pipeline.orchestrator.transition_job')
+    def test_run_full_pipeline_research_only(self, mock_transition, mock_get_job, mock_db):
+        """Test that research stage handler is called via STAGE_FUNCTIONS registry."""
+        from geofactory.pipeline.orchestrator import STAGE_FUNCTIONS
+        
+        mock_job = {"id": "test-job", "topic": "Test", "output_dir": str(self.package_dir), "status": "proposed"}
+        mock_get_job.return_value = mock_job
+        
+        # Save original research function and replace with mock
+        mock_research = MagicMock(return_value={"sources_added": 5})
+        original_research = STAGE_FUNCTIONS[PipelineStage.RESEARCH]
+        STAGE_FUNCTIONS[PipelineStage.RESEARCH] = mock_research
+        
+        try:
+            config = MagicMock(spec=FactoryConfig)
+            config.groq_api_key = ""
+            config.local_llm_model = ""
+            config.tts_backend = "none"
+            
+            db = MagicMock(spec=Database)
+            
+            # This will fail at script stage (not mocked), but we can verify research ran
+            with self.assertRaises(Exception):
+                run_full_pipeline(db, "test-job", config)
+            
+            mock_research.assert_called_once()
+        finally:
+            # Restore original function
+            STAGE_FUNCTIONS[PipelineStage.RESEARCH] = original_research
+
 
 @unittest.skipIf(not PIPELINE_AVAILABLE, "PIL not available in test environment")
 class PipelineOrchestratorIntegrationTests(unittest.TestCase):

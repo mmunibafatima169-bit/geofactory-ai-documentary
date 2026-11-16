@@ -1063,7 +1063,9 @@ def _cmd_smoke(args, config) -> int:
     if args.ledger:
         ledger_path = args.ledger
     else:
-        ledger_path = Path(__file__).parent / "tests" / "fixtures" / "singapore_ledger.json"
+        # Use repository root (parent of geofactory package)
+        repo_root = Path(__file__).resolve().parents[1]
+        ledger_path = repo_root / "tests" / "fixtures" / "singapore_ledger.json"
     
     if not ledger_path.exists():
         record_stage("init", "FAIL", error={"type": "FileNotFoundError", "message": f"Ledger not found: {ledger_path}"})
@@ -1107,7 +1109,9 @@ def _cmd_smoke(args, config) -> int:
         
         # Remove test metadata
         ledger.pop("meta", None)
-        import_ledger(db, job_id, ledger)
+        # Use import_ledger_data for already-parsed dict
+        from geofactory.agents.research_agent import import_ledger_data
+        import_ledger_data(db, job_id, ledger)
         record_stage("ledger_import", "PASS", {"job_id": job_id, "claims": len(ledger.get("claims", []))})
         print(f"  PASS: Ledger imported ({len(ledger.get('claims', []))} claims)")
         

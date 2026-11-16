@@ -15,6 +15,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     
+    env:
+      GEOFACTORY_REQUIRE_DEPS: "1"
+    
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -28,6 +31,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
+      
+      - name: Verify dependencies
+        run: |
+          python -c "import PIL; print(f'PIL version: {PIL.__version__}')"
+          ffmpeg -version | head -1
+          espeak-ng --version | head -1
       
       - name: Install Python dependencies
         run: |
@@ -77,3 +86,8 @@ jobs:
       - name: Verify Python syntax
         run: |
           python -m py_compile $(find . -name "*.py" -not -path "./studio/remotion/*" -not -path "./.git/*")
+      
+      - name: Run pyflakes
+        run: |
+          pip install pyflakes
+          pyflakes geofactory/ tests/ || (echo "::error::pyflakes found issues" && exit 1)
