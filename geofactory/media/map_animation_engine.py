@@ -13,10 +13,13 @@ import tempfile
 from dataclasses import asdict, dataclass
 from datetime import date, datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
+
+if TYPE_CHECKING:
+    from PIL import Image, ImageDraw, ImageFont
 
 
 DATASET_NAME = "Natural Earth 1:110m Admin 0 Countries"

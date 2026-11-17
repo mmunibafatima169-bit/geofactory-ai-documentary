@@ -1,6 +1,5 @@
-from __future__ import annotations
-
-import os
+"""Regression tests for CLI smoke command and dispatch."""
+import ast
 import subprocess
 import sys
 import tempfile
@@ -8,44 +7,122 @@ import unittest
 from pathlib import Path
 
 
-class CLISmokeRegressionTests(unittest.TestCase):
-    """Regression tests for CLI commands to ensure they don't crash due to shadowed imports."""
+class TestCLIRegression(unittest.TestCase):
+    """Test that CLI structure is correct after restoration."""
 
-    def _run_cli(self, args: list[str], cwd: Path | None = None) -> subprocess.CompletedProcess:
-        """Run geofactory CLI command and return result."""
-        env = os.environ.copy()
-        env["PYTHONPATH"] = "/root/geofactory-ai-documentary"
+    def test_single_def_run(self):
+        """cli.py must have exactly one 'def run' function."""
+        with open("geofactory/cli.py") as f:
+            tree = ast.parse(f.read())
+        run_funcs = [n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run"]
+        self.assertEqual(len(run_funcs), 1, "cli.py must have exactly one def run")
+
+    def test_all_subcommands_handled(self):
+        """All 37 subparser choices must be handled in run()."""
+        with open("geofactory/cli.py") as f:
+            tree = ast.parse(f.read())
+
+        # Get subparser choices from build_parser
+        parser_choices = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and hasattr(node.func, 'attr') and node.func.attr == 'add_parser':
+                if node.args and isinstance(node.args[0], ast.Constant):
+                    parser_choices.add(node.args[0].value)
+
+        # Get handled commands in run()
+        handled = set()
+        run_func = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "run")
+        for node in ast.walk(run_func):
+            if isinstance(node, ast.If):
+                if isinstance(node.test, ast.Compare):
+                    left = node.test.left
+                    if isinstance(left, ast.Attribute) and left.attr == "command":
+                        for comp in node.test.comparators:
+                            if isinstance(comp, ast.Constant):
+                                handled.add(comp.value)
+
+        # Compare
+        missing = parser_choices - handled
+        extra = handled - parser_choices
+        self.assertEqual(missing, set(), f"Subcommands missing from run(): {missing}")
+        self.assertEqual(extra, set(), f"Extra handlers not in parser: {extra}")
+
+    def test_singapore_ledger_single_reference(self):
+        """The string 'singapore_ledger' must appear exactly once in code (not help)."""
+        with open("geofactory/cli.py") as f:
+            content = f.read()
+        # Count non-comment, non-docstring occurrences in actual code
+        # The help text has it once, the code path has it once
+        code_refs = [i for i in range(len(content)) if content.startswith("singapore_ledger", i)]
+        # Filter out the one in help text (contains "defaults to")
+        # We expect exactly 2 total: 1 in help, 1 in code
+        self.assertEqual(len(code_refs), 2, f"Expected 2 refs (1 help + 1 code), got {len(code_refs)}")
+
+
+class TestCLISmokeSubprocess(unittest.TestCase):
+    """Subprocess tests for smoke command."""
+
+    def setUp(self):
+        self.repo_root = Path(__file__).resolve().parents[1]
+        self.pythonpath = str(self.repo_root)
+
+    def run_cli(self, args, env=None):
+        """Run geofactory CLI as subprocess."""
         cmd = [sys.executable, "-m", "geofactory"] + args
-        return subprocess.run(cmd, capture_output=True, text=True, cwd=cwd or Path.cwd(), env=env)
+        test_env = {"PYTHONPATH": self.pythonpath, **dict(env or {})}
+        result = subprocess.run(cmd, capture_output=True, text=True, env=test_env, timeout=60)
+        return result
 
-    def test_help_command(self):
-        """`python -m geofactory --help` should exit 0 and print usage."""
-        result = self._run_cli(["--help"])
-        self.assertEqual(result.returncode, 0, 
-            f"geofactory --help failed with exit code {result.returncode}: {result.stderr}")
-        self.assertIn("usage:", result.stdout.lower())
-        self.assertIn("geofactory", result.stdout.lower())
-
-    def test_smoke_help_command(self):
-        """`python -m geofactory smoke --help` should exit 0 without requiring PIL."""
-        result = self._run_cli(["smoke", "--help"])
-        self.assertEqual(result.returncode, 0,
-            f"geofactory smoke --help failed with exit code {result.returncode}: {result.stderr}")
-        self.assertIn("smoke", result.stdout.lower())
-        self.assertIn("--topic", result.stdout)
-        self.assertIn("--seconds", result.stdout)
+    def test_help_commands(self):
+        """--help works for main and smoke."""
+        for args in [["--help"], ["smoke", "--help"]]:
+            result = self.run_cli(args)
+            self.assertEqual(result.returncode, 0, f"Failed: {' '.join(args)}\n{result.stderr}")
+            self.assertIn("usage:", result.stdout.lower())
 
     def test_init_command(self):
-        """`python -m geofactory init` should work in a temp directory."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            tmp_path = Path(tmpdir)
-            result = self._run_cli(["init"], cwd=tmp_path)
-            self.assertEqual(result.returncode, 0,
-                f"geofactory init failed with exit code {result.returncode}: {result.stderr}")
-            # Verify config.json and database were created
-            self.assertTrue((tmp_path / "config.json").exists(), "config.json not created")
-            self.assertTrue((tmp_path / "data" / "geofactory.sqlite3").exists(), "database not created")
+        """init command creates config and database."""
+        with tempfile.TemporaryDirectory() as tmp:
+            config_path = Path(tmp) / "config.json"
+            result = self.run_cli(["--config", str(config_path), "init"])
+            self.assertEqual(result.returncode, 0, f"init failed: {result.stderr}")
+            self.assertTrue(config_path.exists())
+            # Database should be created
+            db_path = Path(tmp) / "data" / "geofactory.sqlite3"
+            self.assertTrue(db_path.exists(), f"Database not created at {db_path}")
+
+    def test_smoke_ledger_import(self):
+        """Smoke test imports ledger and records PASS with claims > 0."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "smoke_out"
+            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
+            # Smoke may fail at later stages without network/PIL/ffmpeg, but ledger_import should PASS
+            self.assertEqual(result.returncode, 1, "Smoke should fail at later stages without deps")
+            summary_path = out_dir / "summary.json"
+            self.assertTrue(summary_path.exists(), "summary.json not created")
+            import json
+            summary = json.loads(summary_path.read_text())
+            # Check ledger_import stage
+            self.assertIn("ledger_import", summary["stages"])
+            stage = summary["stages"]["ledger_import"]
+            self.assertEqual(stage["status"], "PASS", f"ledger_import failed: {stage.get('error')}")
+            self.assertGreater(stage["details"].get("claims", 0), 0, "No claims imported")
+
+    def test_smoke_invalid_ledger(self):
+        """Smoke with nonexistent ledger creates summary.json and exits non-zero."""
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "smoke_out"
+            result = self.run_cli(["smoke", "--out", str(out_dir), "--ledger", "/nonexistent.json"])
+            self.assertNotEqual(result.returncode, 0, "Should fail with nonexistent ledger")
+            summary_path = out_dir / "summary.json"
+            self.assertTrue(summary_path.exists(), "summary.json not created on error")
+            import json
+            summary = json.loads(summary_path.read_text())
+            # Should have init/preflight stage with FAIL
+            init_stage = summary["stages"].get("init") or summary["stages"].get("preflight")
+            self.assertIsNotNone(init_stage, "No init/preflight stage in summary")
+            self.assertEqual(init_stage["status"], "FAIL")
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)

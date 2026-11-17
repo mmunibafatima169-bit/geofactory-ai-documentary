@@ -7,7 +7,10 @@ import math
 import re
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from PIL import Image, ImageDraw, ImageFont, ImageStat
 
 
 from geofactory.media.map_animation_engine import (
