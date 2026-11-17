@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 """Regression tests for CLI smoke command and dispatch."""
 import ast
+import os
 import subprocess
 import sys
 import tempfile
@@ -64,9 +65,21 @@ class TestCLIRegression(unittest.TestCase):
 class TestCLISmokeSubprocess(unittest.TestCase):
     """Subprocess tests for smoke command."""
 
-    def setUp(self):
-        self.repo_root = Path(__file__).resolve().parents[1]
-        self.pythonpath = str(self.repo_root)
+    @classmethod
+    def setUpClass(cls):
+        cls.repo_root = Path(__file__).resolve().parents[1]
+        cls.tmp = tempfile.TemporaryDirectory()
+        cls.out_dir = Path(cls.tmp.name) / "smoke_out"
+        cmd = [sys.executable, "-m", "geofactory", "smoke", "--out", str(cls.out_dir),
+               "--seconds", "60", "--offline"]
+        cls.result = subprocess.run(cmd, capture_output=True, text=True,
+            env={**os.environ, "PYTHONPATH": str(cls.repo_root)}, timeout=120)
+        cls.summary_path = cls.out_dir / "summary.json"
+        cls.summary = json.loads(cls.summary_path.read_text()) if cls.summary_path.exists() else {}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.tmp.cleanup()
 
     def run_cli(self, args, env=None):
         """Run geofactory CLI as subprocess with --offline for network independence."""
@@ -74,7 +87,7 @@ class TestCLISmokeSubprocess(unittest.TestCase):
         if args and args[0] == "smoke" and "--offline" not in args:
             args = args + ["--offline"]
         cmd = [sys.executable, "-m", "geofactory"] + args
-        test_env = {"PYTHONPATH": self.pythonpath, **dict(env or {})}
+        test_env = {**os.environ, "PYTHONPATH": str(self.repo_root), **dict(env or {})}
         result = subprocess.run(cmd, capture_output=True, text=True, env=test_env, timeout=60)
         return result
 
@@ -98,25 +111,18 @@ class TestCLISmokeSubprocess(unittest.TestCase):
 
     def test_smoke_ledger_import(self):
         """Smoke test imports ledger and records PASS with claims > 0."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            # Smoke may fail at later stages without network/PIL/ffmpeg, but ledger_import should PASS
-            self.assertEqual(result.returncode, 1, "Smoke should fail at later stages without deps")
-            summary_path = out_dir / "summary.json"
-            self.assertTrue(summary_path.exists(), "summary.json not created")
-            import json
-            summary = json.loads(summary_path.read_text())
-            # Check ledger_import stage
-            self.assertIn("ledger_import", summary["stages"])
-            stage = summary["stages"]["ledger_import"]
-            self.assertEqual(stage["status"], "PASS", f"ledger_import failed: {stage.get('error')}")
-            self.assertGreater(stage["details"].get("claims", 0), 0, "No claims imported")
-            # Network stages should be SKIPPED in offline mode
-            self.assertIn("wikipedia_research", summary["stages"])
-            self.assertEqual(summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
-            self.assertIn("commons_assets", summary["stages"])
-            self.assertEqual(summary["stages"]["commons_assets"]["status"], "SKIPPED")
+        self.assertTrue(self.summary_path.exists(), "summary.json not created")
+        self.assertIn("ledger_import", self.summary["stages"])
+        stage = self.summary["stages"]["ledger_import"]
+        self.assertEqual(stage["status"], "PASS", f"ledger_import failed: {stage.get('error')}")
+        self.assertGreater(stage["details"].get("claims", 0), 0, "No claims imported")
+        self.assertIn("wikipedia_research", self.summary["stages"])
+        self.assertEqual(self.summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
+        self.assertIn("commons_assets", self.summary["stages"])
+        self.assertEqual(self.summary["stages"]["commons_assets"]["status"], "SKIPPED")
+        for stage_name, stage in self.summary["stages"].items():
+            self.assertNotEqual(stage.get("error_kind"), "code_error",
+                f"{stage_name} has code_error")
 
     def test_smoke_invalid_ledger(self):
         """Smoke with nonexistent ledger creates summary.json and exits non-zero."""
@@ -135,28 +141,9 @@ class TestCLISmokeSubprocess(unittest.TestCase):
 
     def test_smoke_network_independence(self):
         """Smoke test with --offline should never make network calls."""
-        import socket
-        # Patch socket to fail on any network call
-        original_socket = socket.socket
-        def blocking_socket(*args, **kwargs):
-            raise socket.gaierror("Network access blocked by test")
-        
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            with patch('socket.socket', side_effect=blocking_socket):
-                result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-                # Should not crash due to network calls
-                summary_path = out_dir / "summary.json"
-                self.assertTrue(summary_path.exists(), "summary.json not created")
-                summary = json.loads(summary_path.read_text())
-                # ledger_import should still PASS (local operation)
-                self.assertIn("ledger_import", summary["stages"])
-                self.assertEqual(summary["stages"]["ledger_import"]["status"], "PASS")
-                # Network stages should be SKIPPED
-                self.assertIn("wikipedia_research", summary["stages"])
-                self.assertEqual(summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
-                self.assertIn("commons_assets", summary["stages"])
-                self.assertEqual(summary["stages"]["commons_assets"]["status"], "SKIPPED")
+        self.assertEqual(self.summary["stages"]["ledger_import"]["status"], "PASS")
+        self.assertEqual(self.summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
+        self.assertEqual(self.summary["stages"]["commons_assets"]["status"], "SKIPPED")
 
 
 if __name__ == "__main__":

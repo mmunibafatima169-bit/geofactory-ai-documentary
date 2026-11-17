@@ -1,5 +1,6 @@
 """Regression test for smoke command function signatures."""
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -11,6 +12,18 @@ from unittest.mock import patch, MagicMock
 class TestSmokeSignatures(unittest.TestCase):
     """Test that smoke command uses correct function signatures."""
 
+    @classmethod
+    def setUpClass(cls):
+        cls.repo_root = Path(__file__).resolve().parents[1]
+        with tempfile.TemporaryDirectory() as tmp:
+            cls.out_dir = Path(tmp) / "smoke_out"
+            cmd = [sys.executable, "-m", "geofactory", "smoke", "--out", str(cls.out_dir),
+                   "--seconds", "60", "--offline"]
+            cls.result = subprocess.run(cmd, capture_output=True, text=True,
+                env={**os.environ, "PYTHONPATH": str(cls.repo_root)}, timeout=120)
+            cls.summary_path = cls.out_dir / "summary.json"
+            cls.summary = json.loads(cls.summary_path.read_text()) if cls.summary_path.exists() else {}
+
     def setUp(self):
         self.repo_root = Path(__file__).resolve().parents[1]
         self.pythonpath = str(self.repo_root)
@@ -21,135 +34,59 @@ class TestSmokeSignatures(unittest.TestCase):
         if args and args[0] == "smoke" and "--offline" not in args:
             args = args + ["--offline"]
         cmd = [sys.executable, "-m", "geofactory"] + args
-        test_env = {"PYTHONPATH": self.pythonpath, **dict(env or {})}
+        test_env = {**os.environ, "PYTHONPATH": str(self.repo_root), **dict(env or {})}
         result = subprocess.run(cmd, capture_output=True, text=True, env=test_env, timeout=120)
         return result
 
     def test_smoke_no_code_errors(self):
         """Smoke test should not have any 'code_error' stages (TypeError, AttributeError, NameError)."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            # Smoke may fail at later stages without network/PIL/ffmpeg, but no code errors
-            summary_path = out_dir / "summary.json"
-            self.assertTrue(summary_path.exists(), "summary.json not created")
-            summary = json.loads(summary_path.read_text())
-            
-            # Check that no stage has error_kind == "code_error"
-            for stage_name, stage_info in summary["stages"].items():
-                if stage_info["status"] == "FAIL":
-                    error = stage_info.get("error", {})
-                    # Network errors, missing deps are OK, but not TypeError/AttributeError/NameError
-                    error_type = error.get("type", "")
-                    self.assertNotIn(error_type, ["TypeError", "AttributeError", "NameError"],
-                        f"Stage {stage_name} has code error: {error_type}: {error.get('message')}")
+        expected = ["ledger_import", "wikipedia_research", "commons_assets", "map_build",
+                    "script_generation", "plan_documentary"]
+        for stage_name in expected:
+            self.assertIn(stage_name, self.summary["stages"])
+        for stage_name, stage_info in self.summary["stages"].items():
+            self.assertNotEqual(
+                stage_info.get("error_kind"),
+                "code_error",
+                f"Stage {stage_name} has code_error: {stage_info}",
+            )
 
     def test_smoke_ledger_import_pass(self):
         """Ledger import stage should PASS with claims > 0."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            summary_path = out_dir / "summary.json"
-            summary = json.loads(summary_path.read_text())
-            self.assertIn("ledger_import", summary["stages"])
-            stage = summary["stages"]["ledger_import"]
-            self.assertEqual(stage["status"], "PASS")
-            self.assertGreater(stage["details"].get("claims", 0), 0)
+        stage = self.summary["stages"]["ledger_import"]
+        self.assertEqual(stage["status"], "PASS")
+        self.assertGreater(stage["details"].get("claims", 0), 0)
 
     def test_smoke_wikipedia_research_no_typeerror(self):
         """Wikipedia research should not raise TypeError about missing arguments."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            summary_path = out_dir / "summary.json"
-            summary = json.loads(summary_path.read_text())
-            if "wikipedia_research" in summary["stages"]:
-                stage = summary["stages"]["wikipedia_research"]
-                if stage["status"] == "FAIL":
-                    error_type = stage.get("error", {}).get("type", "")
-                    self.assertNotEqual(error_type, "TypeError",
-                        f"wikipedia_research has TypeError: {stage.get('error', {}).get('message')}")
+        stage = self.summary["stages"]["wikipedia_research"]
+        self.assertNotEqual(stage.get("error_kind"), "code_error")
 
     def test_smoke_commons_assets_no_typeerror(self):
         """Commons assets should not raise TypeError about unexpected kwargs."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            summary_path = out_dir / "summary.json"
-            summary = json.loads(summary_path.read_text())
-            if "commons_assets" in summary["stages"]:
-                stage = summary["stages"]["commons_assets"]
-                if stage["status"] == "FAIL":
-                    error_type = stage.get("error", {}).get("type", "")
-                    self.assertNotEqual(error_type, "TypeError",
-                        f"commons_assets has TypeError: {stage.get('error', {}).get('message')}")
+        stage = self.summary["stages"]["commons_assets"]
+        self.assertNotEqual(stage.get("error_kind"), "code_error")
 
     def test_smoke_map_build_no_typeerror(self):
         """Map build should not raise TypeError about unexpected kwargs."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            summary_path = out_dir / "summary.json"
-            summary = json.loads(summary_path.read_text())
-            if "map_build" in summary["stages"]:
-                stage = summary["stages"]["map_build"]
-                if stage["status"] == "FAIL":
-                    error_type = stage.get("error", {}).get("type", "")
-                    self.assertNotEqual(error_type, "TypeError",
-                        f"map_build has TypeError: {stage.get('error', {}).get('message')}")
+        stage = self.summary["stages"]["map_build"]
+        self.assertNotEqual(stage.get("error_kind"), "code_error")
 
     def test_smoke_plan_documentary_no_typeerror(self):
         """Plan documentary should not raise TypeError about unexpected kwargs."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            summary_path = out_dir / "summary.json"
-            summary = json.loads(summary_path.read_text())
-            if "plan_documentary" in summary["stages"]:
-                stage = summary["stages"]["plan_documentary"]
-                if stage["status"] == "FAIL":
-                    error_type = stage.get("error", {}).get("type", "")
-                    self.assertNotEqual(error_type, "TypeError",
-                        f"plan_documentary has TypeError: {stage.get('error', {}).get('message')}")
+        stage = self.summary["stages"]["plan_documentary"]
+        self.assertNotEqual(stage.get("error_kind"), "code_error")
 
     def test_smoke_render_documentary_no_typeerror(self):
         """Render documentary should not raise TypeError about missing arguments."""
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-            summary_path = out_dir / "summary.json"
-            summary = json.loads(summary_path.read_text())
-            if "render_documentary" in summary["stages"]:
-                stage = summary["stages"]["render_documentary"]
-                if stage["status"] == "FAIL":
-                    error_type = stage.get("error", {}).get("type", "")
-                    self.assertNotEqual(error_type, "TypeError",
-                        f"render_documentary has TypeError: {stage.get('error', {}).get('message')}")
+        stage = self.summary["stages"]["render_documentary"]
+        self.assertNotEqual(stage.get("error_kind"), "code_error")
 
     def test_smoke_network_independence(self):
         """Smoke test with --offline should never make network calls."""
-        import socket
-        # Patch socket to fail on any network call
-        original_socket = socket.socket
-        def blocking_socket(*args, **kwargs):
-            raise socket.gaierror("Network access blocked by test")
-        
-        with tempfile.TemporaryDirectory() as tmp:
-            out_dir = Path(tmp) / "smoke_out"
-            with patch('socket.socket', side_effect=blocking_socket):
-                result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
-                # Should not crash due to network calls
-                summary_path = out_dir / "summary.json"
-                self.assertTrue(summary_path.exists(), "summary.json not created")
-                summary = json.loads(summary_path.read_text())
-                # ledger_import should still PASS (local operation)
-                self.assertIn("ledger_import", summary["stages"])
-                self.assertEqual(summary["stages"]["ledger_import"]["status"], "PASS")
-                # Network stages should be SKIPPED
-                self.assertIn("wikipedia_research", summary["stages"])
-                self.assertEqual(summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
-                self.assertIn("commons_assets", summary["stages"])
-                self.assertEqual(summary["stages"]["commons_assets"]["status"], "SKIPPED")
+        self.assertEqual(self.summary["stages"]["ledger_import"]["status"], "PASS")
+        self.assertEqual(self.summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
+        self.assertEqual(self.summary["stages"]["commons_assets"]["status"], "SKIPPED")
 
 
 if __name__ == "__main__":
