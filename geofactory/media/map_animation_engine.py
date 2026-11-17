@@ -253,11 +253,30 @@ def find_country(collection: dict[str, Any], iso_a3: str) -> dict[str, Any]:
     code = iso_a3.strip().upper()
     if len(code) != 3 or not code.isalpha():
         raise MapAnimationError("Country must be identified by a three-letter ISO A3 code.")
+    # Try exact match on ISO_A3_EH first, then ADM0_A3
+    for feature in collection["features"]:
+        if not isinstance(feature, dict):
+            continue
+        props = feature.get("properties", {})
+        if not isinstance(props, dict):
+            continue
+        if props.get("ISO_A3_EH", "").upper() == code:
+            if _polygons(feature):
+                return feature
+    for feature in collection["features"]:
+        if not isinstance(feature, dict):
+            continue
+        props = feature.get("properties", {})
+        if not isinstance(props, dict):
+            continue
+        if props.get("ADM0_A3", "").upper() == code:
+            if _polygons(feature):
+                return feature
+    # Fallback to original _feature_code (which checks ISO_A3_EH then ADM0_A3)
     for feature in collection["features"]:
         if isinstance(feature, dict) and _feature_code(feature) == code:
-            if not _polygons(feature):
-                break
-            return feature
+            if _polygons(feature):
+                return feature
     raise MapAnimationError(f"Natural Earth has no country feature for ISO A3 {code}.")
 
 
@@ -436,8 +455,20 @@ def create_map_scene(
         raise MapAnimationError("Map scene dimensions must be even and at least 320x180.")
     if not 1 <= fps <= 30:
         raise MapAnimationError("Map scene frame rate must be between 1 and 30 fps.")
-    collection, dataset_manifest = load_natural_earth(root)
-    target = find_country(collection, spec.country_iso_a3)
+    # Try 110m first, then fallback to 50m for small countries
+    target = None
+    dataset_manifest = None
+    collection = None
+    for scale in (110, 50):
+        try:
+            collection, dataset_manifest = load_natural_earth(root, scale=scale)
+            target = find_country(collection, spec.country_iso_a3)
+            if target:
+                break
+        except MapAnimationError:
+            continue
+    if target is None:
+        raise MapAnimationError(f"Natural Earth has no country feature for ISO A3 {spec.country_iso_a3} in 110m or 50m datasets.")
     for longitude, latitude in spec.route:
         if not -180 <= longitude <= 180 or not -90 <= latitude <= 90:
             raise MapAnimationError("Route coordinates must be longitude/latitude pairs.")
