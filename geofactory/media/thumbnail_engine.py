@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from PIL import Image, ImageDraw, ImageFont, ImageStat
+    from PIL import Image, ImageDraw, ImageFont
 
 
 from geofactory.media.map_animation_engine import (

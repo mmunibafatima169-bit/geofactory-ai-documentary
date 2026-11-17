@@ -19,7 +19,7 @@ from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 if TYPE_CHECKING:
-    from PIL import Image, ImageDraw, ImageFont
+    from PIL import Image, ImageDraw
 
 
 DATASET_NAME = "Natural Earth 1:110m Admin 0 Countries"
