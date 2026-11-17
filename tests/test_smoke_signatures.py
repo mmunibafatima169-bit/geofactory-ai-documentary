@@ -16,7 +16,10 @@ class TestSmokeSignatures(unittest.TestCase):
         self.pythonpath = str(self.repo_root)
 
     def run_cli(self, args, env=None):
-        """Run geofactory CLI as subprocess."""
+        """Run geofactory CLI as subprocess with --offline for network independence."""
+        # Add --offline flag if not already present and it's a smoke command
+        if args and args[0] == "smoke" and "--offline" not in args:
+            args = args + ["--offline"]
         cmd = [sys.executable, "-m", "geofactory"] + args
         test_env = {"PYTHONPATH": self.pythonpath, **dict(env or {})}
         result = subprocess.run(cmd, capture_output=True, text=True, env=test_env, timeout=120)
@@ -122,6 +125,31 @@ class TestSmokeSignatures(unittest.TestCase):
                     error_type = stage.get("error", {}).get("type", "")
                     self.assertNotEqual(error_type, "TypeError",
                         f"render_documentary has TypeError: {stage.get('error', {}).get('message')}")
+
+    def test_smoke_network_independence(self):
+        """Smoke test with --offline should never make network calls."""
+        import socket
+        # Patch socket to fail on any network call
+        original_socket = socket.socket
+        def blocking_socket(*args, **kwargs):
+            raise socket.gaierror("Network access blocked by test")
+        
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "smoke_out"
+            with patch('socket.socket', side_effect=blocking_socket):
+                result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
+                # Should not crash due to network calls
+                summary_path = out_dir / "summary.json"
+                self.assertTrue(summary_path.exists(), "summary.json not created")
+                summary = json.loads(summary_path.read_text())
+                # ledger_import should still PASS (local operation)
+                self.assertIn("ledger_import", summary["stages"])
+                self.assertEqual(summary["stages"]["ledger_import"]["status"], "PASS")
+                # Network stages should be SKIPPED
+                self.assertIn("wikipedia_research", summary["stages"])
+                self.assertEqual(summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
+                self.assertIn("commons_assets", summary["stages"])
+                self.assertEqual(summary["stages"]["commons_assets"]["status"], "SKIPPED")
 
 
 if __name__ == "__main__":

@@ -1,3 +1,5 @@
+import json
+from unittest.mock import patch
 """Regression tests for CLI smoke command and dispatch."""
 import ast
 import subprocess
@@ -67,7 +69,10 @@ class TestCLISmokeSubprocess(unittest.TestCase):
         self.pythonpath = str(self.repo_root)
 
     def run_cli(self, args, env=None):
-        """Run geofactory CLI as subprocess."""
+        """Run geofactory CLI as subprocess with --offline for network independence."""
+        # Add --offline flag if not already present and it's a smoke command
+        if args and args[0] == "smoke" and "--offline" not in args:
+            args = args + ["--offline"]
         cmd = [sys.executable, "-m", "geofactory"] + args
         test_env = {"PYTHONPATH": self.pythonpath, **dict(env or {})}
         result = subprocess.run(cmd, capture_output=True, text=True, env=test_env, timeout=60)
@@ -107,6 +112,11 @@ class TestCLISmokeSubprocess(unittest.TestCase):
             stage = summary["stages"]["ledger_import"]
             self.assertEqual(stage["status"], "PASS", f"ledger_import failed: {stage.get('error')}")
             self.assertGreater(stage["details"].get("claims", 0), 0, "No claims imported")
+            # Network stages should be SKIPPED in offline mode
+            self.assertIn("wikipedia_research", summary["stages"])
+            self.assertEqual(summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
+            self.assertIn("commons_assets", summary["stages"])
+            self.assertEqual(summary["stages"]["commons_assets"]["status"], "SKIPPED")
 
     def test_smoke_invalid_ledger(self):
         """Smoke with nonexistent ledger creates summary.json and exits non-zero."""
@@ -122,6 +132,31 @@ class TestCLISmokeSubprocess(unittest.TestCase):
             init_stage = summary["stages"].get("init") or summary["stages"].get("preflight")
             self.assertIsNotNone(init_stage, "No init/preflight stage in summary")
             self.assertEqual(init_stage["status"], "FAIL")
+
+    def test_smoke_network_independence(self):
+        """Smoke test with --offline should never make network calls."""
+        import socket
+        # Patch socket to fail on any network call
+        original_socket = socket.socket
+        def blocking_socket(*args, **kwargs):
+            raise socket.gaierror("Network access blocked by test")
+        
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "smoke_out"
+            with patch('socket.socket', side_effect=blocking_socket):
+                result = self.run_cli(["smoke", "--out", str(out_dir), "--seconds", "10"])
+                # Should not crash due to network calls
+                summary_path = out_dir / "summary.json"
+                self.assertTrue(summary_path.exists(), "summary.json not created")
+                summary = json.loads(summary_path.read_text())
+                # ledger_import should still PASS (local operation)
+                self.assertIn("ledger_import", summary["stages"])
+                self.assertEqual(summary["stages"]["ledger_import"]["status"], "PASS")
+                # Network stages should be SKIPPED
+                self.assertIn("wikipedia_research", summary["stages"])
+                self.assertEqual(summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
+                self.assertIn("commons_assets", summary["stages"])
+                self.assertEqual(summary["stages"]["commons_assets"]["status"], "SKIPPED")
 
 
 if __name__ == "__main__":
