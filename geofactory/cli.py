@@ -704,6 +704,18 @@ def _cmd_smoke(args, config) -> int:
     except Exception as e:
         fail_stage("espeak_narrate", e)
     
+    # STAGE 6.5: Script Generation (offline fallback)
+    print("\n--- Stage 6.5: Script Generation ---")
+    try:
+        from geofactory.agents.script_agent import write_script_preview
+        job = get_job(db, actual_job_id)
+        script_path = Path(job["output_dir"]) / "script.md"
+        words = write_script_preview(db, actual_job_id, script_path, demo=True)
+        record_stage("script_generation", "PASS", {"script": str(script_path), "words": words})
+        print(f"  PASS: Script generated ({words} words)")
+    except Exception as e:
+        fail_stage("script_generation", e)
+    
     # STAGE 7: Plan Documentary
     print("\n--- Stage 7: Plan Documentary ---")
     try:
@@ -716,8 +728,9 @@ def _cmd_smoke(args, config) -> int:
     # STAGE 8: Render Documentary (FFmpeg)
     print("\n--- Stage 8: Render Documentary (FFmpeg) ---")
     try:
+        job = get_job(db, actual_job_id)
         output_mp4 = out_dir / "final.mp4"
-        render_documentary_from_plan(smoke_config, actual_job_id, out_dir, output_mp4)
+        render_documentary_from_plan(smoke_config, actual_job_id, Path(job["output_dir"]), output_mp4)
         if output_mp4.exists():
             record_stage("render_documentary", "PASS", {"output": str(output_mp4), "size_bytes": output_mp4.stat().st_size})
             print(f"  PASS: Documentary rendered ({output_mp4.stat().st_size} bytes)")
@@ -738,8 +751,9 @@ def _cmd_smoke(args, config) -> int:
     # STAGE 10: Shorts Generation
     print("\n--- Stage 10: Shorts Generation ---")
     try:
+        job = get_job(db, actual_job_id)
         shorts_output = out_dir / "shorts.mp4"
-        generate_shorts_from_documentary(smoke_config, job_id, out_dir, shorts_output, target_duration=min(45, args.seconds))
+        generate_shorts_from_documentary(smoke_config, actual_job_id, Path(job["output_dir"]), shorts_output, target_duration=min(45, args.seconds))
         if shorts_output.exists():
             record_stage("shorts", "PASS", {"output": str(shorts_output), "size_bytes": shorts_output.stat().st_size})
             print(f"  PASS: Shorts generated ({shorts_output.stat().st_size} bytes)")
