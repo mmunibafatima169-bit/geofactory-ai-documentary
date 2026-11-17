@@ -204,6 +204,7 @@ def build_parser() -> argparse.ArgumentParser:
     smoke.add_argument("--seconds", type=float, default=60.0, help="Target documentary duration in seconds")
     smoke.add_argument("--out", type=Path, default=Path("output/smoke"), help="Output directory for smoke test artifacts")
     smoke.add_argument("--ledger", type=Path, help="Optional test ledger JSON (defaults to tests/fixtures/singapore_ledger.json)")
+    smoke.add_argument("--offline", action="store_true", help="Skip network-dependent stages (Wikipedia, Commons)")
 
 
     editorial = sub.add_parser(
@@ -454,6 +455,9 @@ def _cmd_smoke(args, config) -> int:
     import sys
     import tempfile
     import time
+    from pathlib import Path
+    from urllib.error import URLError, HTTPError
+    from urllib.request import urlopen
     
     from geofactory.agents.research_agent import import_ledger
     from geofactory.media.documentary_renderer import render_documentary_from_plan
@@ -477,10 +481,46 @@ def _cmd_smoke(args, config) -> int:
         "start_time": time.time(),
         "stages": {},
         "final_output": None,
-    "ffprobe": None,
+        "ffprobe": None,
         "overall_status": "UNKNOWN",
         "error": None
     }
+    
+    def classify_error(exc: Exception) -> str:
+        """Classify exception into error_kind."""
+        exc_type = type(exc).__name__
+        exc_msg = str(exc).lower()
+        
+        # Check exception chain for root cause
+        def check_chain(e):
+            while e:
+                t = type(e).__name__
+                m = str(e).lower()
+                if isinstance(e, (URLError, HTTPError, TimeoutError, ConnectionError)):
+                    return "network"
+                if t in {"URLError", "HTTPError", "TimeoutError", "ConnectionError"}:
+                    return "network"
+                if any(x in m for x in ["connection", "timeout", "network", "dns", "resolve", "urlopen", "name resolution"]):
+                    return "network"
+                if isinstance(e, ModuleNotFoundError):
+                    return "dependency_missing"
+                if t == "ImportError" and any(x in m for x in ["pil", "pillow", "espeak", "ffmpeg", "ffprobe"]):
+                    return "dependency_missing"
+                if isinstance(e, FileNotFoundError):
+                    return "input_missing"
+                if t == "FileNotFoundError" or "not found" in m:
+                    return "input_missing"
+                if t in {"TypeError", "AttributeError", "NameError", "KeyError", "ValueError"}:
+                    return "code_error"
+                e = e.__cause__ or e.__context__
+            return None
+        
+        result = check_chain(exc)
+        if result:
+            return result
+        
+        # Data errors (everything else)
+        return "data_error"
     
     def record_stage(name, status, details=None, error=None):
         summary["stages"][name] = {
@@ -493,12 +533,20 @@ def _cmd_smoke(args, config) -> int:
     
     def fail_stage(name, exc):
         import traceback
-        record_stage(name, "FAIL", error={"type": type(exc).__name__, "message": str(exc), "traceback": traceback.format_exc()})
+        error_info = {
+            "type": type(exc).__name__,
+            "message": str(exc),
+            "traceback": traceback.format_exc(),
+            "error_kind": classify_error(exc)
+        }
+        record_stage(name, "FAIL", error=error_info)
         print(f"STAGE {name}: FAILED - {exc}")
         return False
     
     print(f"=== SMOKE TEST: {args.topic} ({args.seconds}s) ===")
     print(f"Output directory: {out_dir}")
+    if args.offline:
+        print("  [OFFLINE MODE] Network stages will be skipped")
     
     # Determine ledger path
     if args.ledger:
@@ -509,7 +557,7 @@ def _cmd_smoke(args, config) -> int:
         ledger_path = repo_root / "tests" / "fixtures" / "singapore_ledger.json"
     
     if not ledger_path.exists():
-        record_stage("init", "FAIL", error={"type": "FileNotFoundError", "message": f"Ledger not found: {ledger_path}"})
+        record_stage("init", "FAIL", error={"type": "FileNotFoundError", "message": f"Ledger not found: {ledger_path}", "error_kind": "input_missing"})
         print(f"ERROR: Ledger not found at {ledger_path}")
         summary["end_time"] = time.time()
         summary["overall_status"] = "FAIL"
@@ -569,27 +617,35 @@ def _cmd_smoke(args, config) -> int:
         (out_dir / "summary.json").write_text(json.dumps(summary, indent=2))
         return 1
     
-    # STAGE 2: Wikipedia Research (will fail without network - mark as FAIL per requirements)
+    # STAGE 2: Wikipedia Research
     print("\n--- Stage 2: Wikipedia Research ---")
-    try:
-        from geofactory.agents.research_agent import discover_wikipedia_sources
-        sources = discover_wikipedia_sources(db, actual_job_id, args.topic, limit=5)
-        record_stage("wikipedia_research", "PASS", {"sources_found": len(sources)})
-        print(f"  PASS: Found {len(sources)} sources")
-    except Exception as e:
-        record_stage("wikipedia_research", "FAIL", error={"type": type(e).__name__, "message": str(e)})
-        print(f"  FAIL (expected without network): {e}")
+    if args.offline:
+        record_stage("wikipedia_research", "SKIPPED", details={"reason": "offline mode"}, error={"error_kind": "skipped_offline"})
+        print("  SKIPPED: offline mode")
+    else:
+        try:
+            from geofactory.agents.research_agent import discover_wikipedia_sources
+            sources = discover_wikipedia_sources(db, actual_job_id, args.topic, limit=5)
+            record_stage("wikipedia_research", "PASS", {"sources_found": len(sources)})
+            print(f"  PASS: Found {len(sources)} sources")
+        except Exception as e:
+            fail_stage("wikipedia_research", e)
+            print(f"  FAIL: {e}")
     
-    # STAGE 3: Commons Assets (will fail without network)
+    # STAGE 3: Commons Assets
     print("\n--- Stage 3: Commons Assets ---")
-    try:
-        from geofactory.media.asset_manager import search_and_download_commons
-        assets = search_and_download_commons(db, actual_job_id, args.topic, out_dir / "assets", limit=3, max_downloads=2)
-        record_stage("commons_assets", "PASS", {"assets_downloaded": len(assets)})
-        print(f"  PASS: Downloaded {len(assets)} assets")
-    except Exception as e:
-        record_stage("commons_assets", "FAIL", error={"type": type(e).__name__, "message": str(e)})
-        print(f"  FAIL (expected without network): {e}")
+    if args.offline:
+        record_stage("commons_assets", "SKIPPED", details={"reason": "offline mode"}, error={"error_kind": "skipped_offline"})
+        print("  SKIPPED: offline mode")
+    else:
+        try:
+            from geofactory.media.asset_manager import search_and_download_commons
+            assets = search_and_download_commons(db, actual_job_id, args.topic, out_dir / "assets", limit=3, max_downloads=2)
+            record_stage("commons_assets", "PASS", {"assets_downloaded": len(assets)})
+            print(f"  PASS: Downloaded {len(assets)} assets")
+        except Exception as e:
+            fail_stage("commons_assets", e)
+            print(f"  FAIL: {e}")
     
     # STAGE 4: Map Build (requires PIL - will fail if not available)
     print("\n--- Stage 4: Map Build ---")
@@ -601,7 +657,7 @@ def _cmd_smoke(args, config) -> int:
             record_stage("map_build", "PASS", {"output": str(map_output), "size_bytes": map_output.stat().st_size})
             print(f"  PASS: Map created ({map_output.stat().st_size} bytes)")
         else:
-            record_stage("map_build", "FAIL", error={"type": "RuntimeError", "message": "Map output not created"})
+            fail_stage("map_build", RuntimeError("Map output not created"))
     except ImportError as e:
         if "PIL" in str(e) or "Pillow" in str(e):
             record_stage("map_build", "SKIP", details={"reason": "PIL not available"})
@@ -666,7 +722,7 @@ def _cmd_smoke(args, config) -> int:
             record_stage("render_documentary", "PASS", {"output": str(output_mp4), "size_bytes": output_mp4.stat().st_size})
             print(f"  PASS: Documentary rendered ({output_mp4.stat().st_size} bytes)")
         else:
-            record_stage("render_documentary", "FAIL", error={"type": "RuntimeError", "message": "Output not created"})
+            fail_stage("render_documentary", RuntimeError("Output not created"))
     except Exception as e:
         fail_stage("render_documentary", e)
     
@@ -688,7 +744,7 @@ def _cmd_smoke(args, config) -> int:
             record_stage("shorts", "PASS", {"output": str(shorts_output), "size_bytes": shorts_output.stat().st_size})
             print(f"  PASS: Shorts generated ({shorts_output.stat().st_size} bytes)")
         else:
-            record_stage("shorts", "FAIL", error={"type": "RuntimeError", "message": "Shorts output not created"})
+            fail_stage("shorts", RuntimeError("Shorts output not created"))
     except Exception as e:
         fail_stage("shorts", e)
     
@@ -741,7 +797,6 @@ def _cmd_smoke(args, config) -> int:
     if summary["overall_status"] == "FAIL":
         return 1
     return 0
-
 
 
 def run(args: argparse.Namespace) -> int:
