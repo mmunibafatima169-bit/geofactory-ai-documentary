@@ -145,6 +145,13 @@ class TestCLISmokeSubprocess(unittest.TestCase):
         self.assertEqual(self.summary["stages"]["wikipedia_research"]["status"], "SKIPPED")
         self.assertEqual(self.summary["stages"]["commons_assets"]["status"], "SKIPPED")
 
+    def test_smoke_plan_documentary_real_narration(self):
+        """The --seconds 60 smoke plan must contain real narration and at least two scenes."""
+        stage = self.summary["stages"]["plan_documentary"]
+        self.assertEqual(stage["status"], "PASS", f"plan failed: {stage}")
+        self.assertGreater(stage["details"].get("narration_words", 0), 0)
+        self.assertGreaterEqual(stage["details"].get("scenes", 0), 2)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

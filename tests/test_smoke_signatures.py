@@ -76,6 +76,10 @@ class TestSmokeSignatures(unittest.TestCase):
         """Plan documentary should not raise TypeError about unexpected kwargs."""
         stage = self.summary["stages"]["plan_documentary"]
         self.assertNotEqual(stage.get("error_kind"), "code_error")
+        self.assertEqual(stage["status"], "PASS")
+        details = stage["details"]
+        self.assertGreater(details.get("narration_words", 0), 0)
+        self.assertGreaterEqual(details.get("scenes", 0), 2)
 
     def test_smoke_render_documentary_no_typeerror(self):
         """Render documentary should not raise TypeError about missing arguments."""

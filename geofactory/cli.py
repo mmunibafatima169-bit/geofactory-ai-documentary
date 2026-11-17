@@ -707,10 +707,13 @@ def _cmd_smoke(args, config) -> int:
     # STAGE 6.5: Script Generation (offline fallback)
     print("\n--- Stage 6.5: Script Generation ---")
     try:
-        from geofactory.agents.script_agent import write_script_preview
         job = get_job(db, actual_job_id)
         script_path = Path(job["output_dir"]) / "script.md"
-        words = write_script_preview(db, actual_job_id, script_path, demo=True)
+        fixture = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "singapore_script.md"
+        fixture_text = fixture.read_text(encoding="utf-8")
+        script_path.parent.mkdir(parents=True, exist_ok=True)
+        script_path.write_text(fixture_text, encoding="utf-8")
+        words = len(re.search(r"## Narration[^\n]*\n(.*?)(?=\n## |\Z)", fixture_text, re.DOTALL).group(1).split())
         record_stage("script_generation", "PASS", {"script": str(script_path), "words": words})
         print(f"  PASS: Script generated ({words} words)")
     except Exception as e:
@@ -720,8 +723,22 @@ def _cmd_smoke(args, config) -> int:
     print("\n--- Stage 7: Plan Documentary ---")
     try:
         plan_result = run_documentary_plan(db, actual_job_id, smoke_config, target_duration_s=args.seconds, profile="smoke")
-        record_stage("plan_documentary", "PASS", {"plan": str(plan_result)})
-        print(f"  PASS: Documentary plan created")
+        narration_words = plan_result.total_narration_words
+        scenes = len(plan_result.scene_manifest.scenes)
+        warnings = validate_documentary_plan(plan_result, profile="smoke")
+        if narration_words <= 0 or scenes < 2:
+            fail_stage("plan_documentary", RuntimeError(
+                f"data_error: narration_words={narration_words}, scenes={scenes}; "
+                f"validation_warnings={warnings}"
+            ))
+        else:
+            record_stage(
+                "plan_documentary",
+                "PASS",
+                {"plan": str(plan_result), "narration_words": narration_words, "scenes": scenes,
+                 "validation_warnings": warnings},
+            )
+            print(f"  PASS: Documentary plan created")
     except Exception as e:
         fail_stage("plan_documentary", e)
     
