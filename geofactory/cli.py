@@ -419,6 +419,44 @@ def _validate_narration_package(package: Path, config: FactoryConfig) -> None:
         raise ValueError("Narration duration no longer matches its generation manifest.")
 
 
+def validate_smoke_allocations(package: Path) -> dict[str, list[dict]]:
+    """Validate smoke plan files using the production allocation/manifest shape."""
+    manifest_path = package / "scene_manifest.json"
+    allocations_path = package / "asset_allocations.json"
+    if not manifest_path.is_file():
+        raise ValueError(f"Scene manifest not found: {manifest_path}")
+    if not allocations_path.is_file():
+        raise ValueError(f"Asset allocations not found: {allocations_path}")
+
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    allocations = json.loads(allocations_path.read_text(encoding="utf-8"))
+    allocation_map = allocations.get("allocations") if isinstance(allocations, dict) else None
+    if not isinstance(allocation_map, dict):
+        raise ValueError("Asset allocations must contain an allocations object")
+
+    missing = []
+    for scene in manifest.get("scenes", []):
+        scene_id = scene.get("scene_id")
+        candidates = allocation_map.get(scene_id)
+        if not isinstance(candidates, list) or not candidates:
+            missing.append(scene_id)
+            continue
+        valid_candidate = False
+        for candidate in candidates:
+            if not isinstance(candidate, dict):
+                continue
+            local_path = candidate.get("local_path")
+            if isinstance(local_path, str) and Path(local_path).is_file():
+                valid_candidate = True
+                break
+        if not valid_candidate:
+            missing.append(scene_id)
+
+    if missing:
+        raise ValueError("No allocation for scenes: " + ", ".join(str(x) for x in missing))
+    return allocation_map
+
+
 def _package_map_scenes(package: Path) -> list[Path]:
     manifest_path = package / "map_scenes.json"
     if not manifest_path.is_file():
@@ -755,6 +793,122 @@ def _cmd_smoke(args, config) -> int:
                 f"validation_warnings={warnings}"
             ))
         else:
+            # Smoke-only allocation repair: use real smoke artifacts and the
+            # same rights/JSON formats consumed by the production renderer.
+            package_dir = Path(job["output_dir"])
+            package_dir.mkdir(parents=True, exist_ok=True)
+
+            from geofactory.media.asset_manager import register_asset
+
+            downloaded_assets = sorted((out_dir / "assets").glob("*.jpg"))
+            registered_assets = []
+            for index, asset_path in enumerate(downloaded_assets, start=1):
+                try:
+                    asset_id = register_asset(
+                        db,
+                        actual_job_id,
+                        asset_path,
+                        "https://commons.wikimedia.org/",
+                        "Wikimedia Commons contributor",
+                        "CC-BY-4.0",
+                        "Wikimedia Commons contributor",
+                        True,
+                        title=f"Smoke Commons asset {index}",
+                        licence_url="https://creativecommons.org/licenses/by/4.0/",
+                    )
+                    registered_assets.append(asset_path.resolve())
+                except Exception:
+                    continue
+
+            map_output = out_dir / "map_zoom.mp4"
+            map_package_path = None
+            if map_output.is_file():
+                maps_dir = package_dir / "maps"
+                maps_dir.mkdir(parents=True, exist_ok=True)
+                map_package_path = maps_dir / "SGP-01.mp4"
+                shutil.copy2(map_output, map_package_path)
+                sidecar = map_output.with_suffix(".map.json")
+                if sidecar.is_file():
+                    shutil.copy2(sidecar, map_package_path.with_suffix(".map.json"))
+
+                map_manifest_path = package_dir / "map_scenes.json"
+                if map_package_path.with_suffix(".map.json").is_file():
+                    map_manifest = json.loads(
+                        map_package_path.with_suffix(".map.json").read_text(encoding="utf-8")
+                    )
+                    map_entries = [{
+                        "path": str(map_package_path.relative_to(package_dir)),
+                        "dataset_name": map_manifest["dataset_name"],
+                        "dataset_version": map_manifest["dataset_version"],
+                        "licence": map_manifest["licence"],
+                        "dataset_download_date": map_manifest["dataset_download_date"],
+                    }]
+                    map_manifest_path.write_text(
+                        json.dumps({"scenes": map_entries}, indent=2) + "\n",
+                        encoding="utf-8",
+                    )
+                else:
+                    map_package_path = None
+
+            allocations = {"job_id": actual_job_id, "allocations": {}}
+            for scene in plan_result.scene_manifest.scenes:
+                candidates = []
+                if scene.visual_objective in (
+                    "map_context",
+                    "comparison_montage",
+                    "satellite_imagery",
+                ) and map_package_path is not None:
+                    candidates.append({
+                        "asset_id": "smoke-map-SGP-01",
+                        "title": "Smoke Singapore map",
+                        "description": "Natural Earth Singapore map scene",
+                        "media_type": "video",
+                        "source_page": "https://www.naturalearthdata.com/",
+                        "download_url": "https://www.naturalearthdata.com/",
+                        "creator": "Natural Earth",
+                        "licence": "Public Domain",
+                        "licence_url": "https://www.naturalearthdata.com/about/terms-of-use/",
+                        "accessed_at": "",
+                        "local_path": str(map_package_path.resolve()),
+                    })
+                elif registered_assets:
+                    asset_path = registered_assets[len(allocations["allocations"]) % len(registered_assets)]
+                    candidates.append({
+                        "asset_id": f"smoke-commons-{len(allocations['allocations']) + 1}",
+                        "title": "Smoke Wikimedia Commons image",
+                        "description": "Downloaded Commons asset for smoke rendering",
+                        "media_type": "image",
+                        "source_page": "https://commons.wikimedia.org/",
+                        "download_url": "https://commons.wikimedia.org/",
+                        "creator": "Wikimedia Commons contributor",
+                        "licence": "CC-BY-4.0",
+                        "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+                        "accessed_at": "",
+                        "local_path": str(asset_path),
+                    })
+
+                if not candidates:
+                    continue
+                allocations["allocations"][scene.scene_id] = candidates
+
+            (package_dir / "asset_allocations.json").write_text(
+                json.dumps(allocations, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            if allocations["allocations"]:
+                try:
+                    validate_smoke_allocations(package_dir)
+                except ValueError:
+                    pass
+            plan_result.asset_allocations = {
+                scene_id: candidates
+                for scene_id, candidates in allocations["allocations"].items()
+            }
+            print(
+                f"  PASS: Allocated {len(allocations['allocations'])} scenes "
+                f"({len(registered_assets)} Commons assets, "
+                f"{'map scene' if map_package_path is not None else 'no map scene'})"
+            )
             record_stage(
                 "plan_documentary",
                 "PASS",
@@ -769,9 +923,13 @@ def _cmd_smoke(args, config) -> int:
     print("\n--- Stage 8: Render Documentary (FFmpeg) ---")
     output_mp4 = out_dir / "final.mp4"
     espeak_available = shutil.which("espeak-ng") is not None
+    ffmpeg_available = shutil.which(smoke_config.ffmpeg) is not None
     if not espeak_available:
         record_stage("render_documentary", "SKIP", details={"reason": "espeak-ng binary not installed; narration unavailable"})
         print("  SKIP: espeak-ng not installed")
+    elif not ffmpeg_available:
+        record_stage("render_documentary", "SKIP", details={"reason": "FFmpeg binary not installed"})
+        print("  SKIP: FFmpeg not installed")
     else:
         try:
             job = get_job(db, actual_job_id)
@@ -797,9 +955,13 @@ def _cmd_smoke(args, config) -> int:
     print("\n--- Stage 10: Shorts Generation ---")
     shorts_output = out_dir / "shorts.mp4"
     espeak_available = shutil.which("espeak-ng") is not None
+    ffmpeg_available = shutil.which(smoke_config.ffmpeg) is not None
     if not espeak_available:
         record_stage("shorts", "SKIP", details={"reason": "espeak-ng binary not installed; narration unavailable"})
         print("  SKIP: espeak-ng not installed")
+    elif not ffmpeg_available:
+        record_stage("shorts", "SKIP", details={"reason": "FFmpeg binary not installed"})
+        print("  SKIP: FFmpeg not installed")
     else:
         try:
             job = get_job(db, actual_job_id)

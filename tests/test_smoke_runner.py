@@ -114,6 +114,85 @@ class SmokeRunnerLogicTests(unittest.TestCase):
         self.assertNotEqual(summary["overall_status"], "FAIL")
 
 
+class SmokeAllocationValidationTests(unittest.TestCase):
+    """No-PIL/FFmpeg tests for smoke package allocation postconditions."""
+
+    def _write_package(self, package: Path, allocations: dict) -> None:
+        package.mkdir(parents=True, exist_ok=True)
+        (package / "scene_manifest.json").write_text(json.dumps({
+            "job_id": "smoke-test",
+            "title": "Singapore",
+            "fps": 30,
+            "width": 1920,
+            "height": 1080,
+            "scenes": [
+                {
+                    "scene_id": "sc-001",
+                    "narration": "Singapore is on a map.",
+                    "start_s": 0.0,
+                    "end_s": 20.0,
+                    "visual_objective": "map_context",
+                    "engine": "ffmpeg",
+                    "animation_type": "map_highlight",
+                    "camera": "push_in",
+                },
+                {
+                    "scene_id": "sc-002",
+                    "narration": "The port supports trade.",
+                    "start_s": 20.0,
+                    "end_s": 40.0,
+                    "visual_objective": "photo_evidence",
+                    "engine": "ffmpeg",
+                    "animation_type": "ken_burns_photo",
+                    "camera": "static",
+                },
+            ],
+            "version": 1,
+        }), encoding="utf-8")
+        (package / "asset_allocations.json").write_text(
+            json.dumps({"job_id": "smoke-test", "allocations": allocations}),
+            encoding="utf-8",
+        )
+
+    def test_smoke_package_accepts_every_allocated_scene(self):
+        from geofactory.cli import validate_smoke_allocations
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            package = Path(tmpdir)
+            map_path = package / "maps" / "SGP-01.mp4"
+            map_path.parent.mkdir(parents=True)
+            map_path.write_bytes(b"fake-map")
+            image_path = package / "assets" / "commons.jpg"
+            image_path.parent.mkdir(parents=True)
+            image_path.write_bytes(b"\xff\xd8\xfffake-small-jpeg")
+            allocations = {
+                "sc-001": [{"asset_id": "map", "media_type": "video",
+                            "local_path": str(map_path)}],
+                "sc-002": [{"asset_id": "commons", "media_type": "image",
+                            "local_path": str(image_path)}],
+            }
+            self._write_package(package, allocations)
+
+            result = validate_smoke_allocations(package)
+            self.assertEqual(set(result), {"sc-001", "sc-002"})
+
+    def test_smoke_package_rejects_scene_without_allocation(self):
+        from geofactory.cli import validate_smoke_allocations
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            package = Path(tmpdir)
+            image_path = package / "commons.jpg"
+            image_path.write_bytes(b"\xff\xd8\xfffake-small-jpeg")
+            allocations = {
+                "sc-001": [{"asset_id": "commons", "media_type": "image",
+                            "local_path": str(image_path)}],
+            }
+            self._write_package(package, allocations)
+
+            with self.assertRaisesRegex(ValueError, "No allocation for scenes: sc-002"):
+                validate_smoke_allocations(package)
+
+
 class SmokeNarrationPackageTests(unittest.TestCase):
     """Tests for smoke narration package placement and missing-tool skips."""
 
