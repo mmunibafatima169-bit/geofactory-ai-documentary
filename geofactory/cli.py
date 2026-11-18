@@ -670,7 +670,14 @@ def _cmd_smoke(args, config) -> int:
     # STAGE 5: Thumbnail Build (requires PIL)
     print("\n--- Stage 5: Thumbnail Build ---")
     try:
-        concepts = generate_thumbnail_concepts(args.topic, "SGP", out_dir, smoke_config.root)
+        smoke_headline = "Singapore Geography"
+        concepts = generate_thumbnail_concepts(
+            args.topic,
+            "SGP",
+            out_dir,
+            smoke_config.root,
+            headline=smoke_headline,
+        )
         record_stage("thumbnail_build", "PASS", {"concepts": len(concepts)})
         print(f"  PASS: Generated {len(concepts)} thumbnail concepts")
     except ImportError as e:

@@ -13,6 +13,14 @@ from pathlib import Path
 class TestCLIRegression(unittest.TestCase):
     """Test that CLI structure is correct after restoration."""
 
+    def test_smoke_thumbnail_headline_is_original_and_valid(self):
+        """The smoke call supplies a 2-5 word headline rather than relying on the topic."""
+        source = Path("geofactory/cli.py").read_text(encoding="utf-8")
+        self.assertIn('smoke_headline = "Singapore Geography"', source)
+        smoke_headline = "Singapore Geography"
+        self.assertGreaterEqual(len(smoke_headline.split()), 2)
+        self.assertLessEqual(len(smoke_headline.split()), 5)
+
     def test_smoke_espeak_backend_is_synthesizable(self):
         """The smoke espeak-ng value is accepted by the real synthesis dispatcher."""
         from geofactory.core.config import FactoryConfig
