@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+import wave
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -110,6 +112,65 @@ class SmokeRunnerLogicTests(unittest.TestCase):
         
         # No FAIL, so overall should not be FAIL
         self.assertNotEqual(summary["overall_status"], "FAIL")
+
+
+class SmokeNarrationPackageTests(unittest.TestCase):
+    """Tests for smoke narration package placement and missing-tool skips."""
+
+    def _args(self, out_dir):
+        return SimpleNamespace(
+            topic="Singapore",
+            seconds=60,
+            out=str(out_dir),
+            offline=True,
+            ledger=None,
+        )
+
+    def test_monkeypatched_synthesis_writes_wav_in_package_dir(self):
+        from geofactory.cli import _cmd_smoke
+
+        def fake_synthesize(text, destination, config, subtitle_destination=None):
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with wave.open(str(destination), "wb") as wav:
+                wav.setnchannels(1)
+                wav.setsampwidth(2)
+                wav.setframerate(8000)
+                wav.writeframes(b"\0\0" * 8000)
+            if subtitle_destination is not None:
+                subtitle_destination.write_text(
+                    "1\n00:00:00,000 --> 00:00:01,000\nSingapore\n",
+                    encoding="utf-8",
+                )
+            return 1.0
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir) / "smoke"
+            with patch("geofactory.media.tts_engine.synthesize", side_effect=fake_synthesize), \
+                 patch("geofactory.media.tts_engine.audio_duration_seconds", return_value=1.0), \
+                 patch("shutil.which", side_effect=lambda name: "/fake/espeak-ng" if name == "espeak-ng" else None):
+                result = _cmd_smoke(self._args(out_dir), MagicMock())
+
+            summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+            wav_paths = list(out_dir.rglob("narration.wav"))
+            self.assertEqual(len(wav_paths), 1)
+            package = wav_paths[0].parent
+            self.assertTrue(wav_paths[0].is_file())
+            self.assertGreater(wav_paths[0].stat().st_size, 0)
+            self.assertTrue((package / "narration.srt").is_file())
+            self.assertTrue((package / "subtitles.srt").is_file())
+            self.assertEqual(summary["stages"]["espeak_narrate"]["status"], "PASS")
+
+    def test_missing_espeak_skips_narration_render_and_shorts(self):
+        from geofactory.cli import _cmd_smoke
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir) / "smoke"
+            with patch("shutil.which", return_value=None):
+                result = _cmd_smoke(self._args(out_dir), MagicMock())
+
+            summary = json.loads((out_dir / "summary.json").read_text(encoding="utf-8"))
+            for stage_name in ("espeak_narrate", "render_documentary", "shorts"):
+                self.assertEqual(summary["stages"][stage_name]["status"], "SKIP")
 
 
 if __name__ == "__main__":

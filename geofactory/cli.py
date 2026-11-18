@@ -689,28 +689,6 @@ def _cmd_smoke(args, config) -> int:
     except Exception as e:
         fail_stage("thumbnail_build", e)
     
-    # STAGE 6: eSpeak Narrate
-    print("\n--- Stage 6: eSpeak Narrate ---")
-    try:
-        narration_text = f"This is a smoke test documentary about {args.topic}. {args.topic} is a sovereign island city-state in Southeast Asia. Founded in 1819 as a trading post, it became one of the world's busiest ports. Today it has a highly developed free-market economy."
-        narration_wav = out_dir / "narration.wav"
-        srt_path = out_dir / "narration.srt"
-        
-        espeak_path = shutil.which("espeak-ng")
-        if not espeak_path:
-            record_stage("espeak_narrate", "SKIP", details={"reason": "espeak-ng binary not installed"})
-            print(f"  SKIP: espeak-ng not installed")
-        else:
-            write_text_only_narration(narration_text, narration_wav.with_suffix(".txt"))
-            synthesize(narration_text, narration_wav, smoke_config)
-            duration = audio_duration_seconds(narration_wav)
-            from geofactory.media.tts_engine import write_estimated_srt
-            write_estimated_srt(narration_text, srt_path)
-            record_stage("espeak_narrate", "PASS", {"wav": str(narration_wav), "duration_s": duration, "srt": str(srt_path)})
-            print(f"  PASS: Narration synthesized ({duration:.1f}s)")
-    except Exception as e:
-        fail_stage("espeak_narrate", e)
-    
     # STAGE 6.5: Script Generation (offline fallback)
     print("\n--- Stage 6.5: Script Generation ---")
     try:
@@ -725,6 +703,44 @@ def _cmd_smoke(args, config) -> int:
         print(f"  PASS: Script generated ({words} words)")
     except Exception as e:
         fail_stage("script_generation", e)
+
+    # STAGE 6: eSpeak Narrate
+    print("\n--- Stage 6: eSpeak Narrate ---")
+    try:
+        job = get_job(db, actual_job_id)
+        package_dir = Path(job["output_dir"])
+        script_path = package_dir / "script.md"
+        script_text = script_path.read_text(encoding="utf-8")
+        narration_match = re.search(
+            r"## Narration[^\n]*\n(.*?)(?=\n## |\Z)",
+            script_text,
+            re.DOTALL,
+        )
+        narration_text = narration_match.group(1).strip() if narration_match else ""
+        narration_text = re.sub(r"^\(\d+\s+words\)\s*\n*", "", narration_text)
+        if not narration_text:
+            raise RuntimeError("Generated script contains no narration")
+
+        narration_wav = package_dir / "narration.wav"
+        srt_path = package_dir / "narration.srt"
+        subtitles_path = package_dir / "subtitles.srt"
+
+        espeak_path = shutil.which("espeak-ng")
+        if not espeak_path:
+            record_stage("espeak_narrate", "SKIP", details={"reason": "espeak-ng binary not installed"})
+            print("  SKIP: espeak-ng not installed")
+        else:
+            write_text_only_narration(narration_text, narration_wav.with_suffix(".txt"))
+            synthesize(narration_text, narration_wav, smoke_config, subtitle_destination=subtitles_path)
+            from geofactory.media.tts_engine import write_estimated_srt
+            write_estimated_srt(narration_text, srt_path)
+            duration = audio_duration_seconds(narration_wav, smoke_config.ffprobe)
+            if duration <= 0:
+                raise RuntimeError("Narration WAV has no positive duration")
+            record_stage("espeak_narrate", "PASS", {"wav": str(narration_wav), "duration_s": duration, "srt": str(subtitles_path)})
+            print(f"  PASS: Narration synthesized from script ({duration:.1f}s)")
+    except Exception as e:
+        fail_stage("espeak_narrate", e)
     
     # STAGE 7: Plan Documentary
     print("\n--- Stage 7: Plan Documentary ---")
@@ -751,17 +767,22 @@ def _cmd_smoke(args, config) -> int:
     
     # STAGE 8: Render Documentary (FFmpeg)
     print("\n--- Stage 8: Render Documentary (FFmpeg) ---")
-    try:
-        job = get_job(db, actual_job_id)
-        output_mp4 = out_dir / "final.mp4"
-        render_documentary_from_plan(smoke_config, actual_job_id, Path(job["output_dir"]), output_mp4)
-        if output_mp4.exists():
-            record_stage("render_documentary", "PASS", {"output": str(output_mp4), "size_bytes": output_mp4.stat().st_size})
-            print(f"  PASS: Documentary rendered ({output_mp4.stat().st_size} bytes)")
-        else:
-            fail_stage("render_documentary", RuntimeError("Output not created"))
-    except Exception as e:
-        fail_stage("render_documentary", e)
+    output_mp4 = out_dir / "final.mp4"
+    espeak_available = shutil.which("espeak-ng") is not None
+    if not espeak_available:
+        record_stage("render_documentary", "SKIP", details={"reason": "espeak-ng binary not installed; narration unavailable"})
+        print("  SKIP: espeak-ng not installed")
+    else:
+        try:
+            job = get_job(db, actual_job_id)
+            render_documentary_from_plan(smoke_config, actual_job_id, Path(job["output_dir"]), output_mp4)
+            if output_mp4.exists():
+                record_stage("render_documentary", "PASS", {"output": str(output_mp4), "size_bytes": output_mp4.stat().st_size})
+                print(f"  PASS: Documentary rendered ({output_mp4.stat().st_size} bytes)")
+            else:
+                fail_stage("render_documentary", RuntimeError("Output not created"))
+        except Exception as e:
+            fail_stage("render_documentary", e)
     
     # STAGE 9: QA
     print("\n--- Stage 9: QA ---")
@@ -774,17 +795,22 @@ def _cmd_smoke(args, config) -> int:
     
     # STAGE 10: Shorts Generation
     print("\n--- Stage 10: Shorts Generation ---")
-    try:
-        job = get_job(db, actual_job_id)
-        shorts_output = out_dir / "shorts.mp4"
-        generate_shorts_from_documentary(smoke_config, actual_job_id, Path(job["output_dir"]), shorts_output, target_duration=min(45, args.seconds))
-        if shorts_output.exists():
-            record_stage("shorts", "PASS", {"output": str(shorts_output), "size_bytes": shorts_output.stat().st_size})
-            print(f"  PASS: Shorts generated ({shorts_output.stat().st_size} bytes)")
-        else:
-            fail_stage("shorts", RuntimeError("Shorts output not created"))
-    except Exception as e:
-        fail_stage("shorts", e)
+    shorts_output = out_dir / "shorts.mp4"
+    espeak_available = shutil.which("espeak-ng") is not None
+    if not espeak_available:
+        record_stage("shorts", "SKIP", details={"reason": "espeak-ng binary not installed; narration unavailable"})
+        print("  SKIP: espeak-ng not installed")
+    else:
+        try:
+            job = get_job(db, actual_job_id)
+            generate_shorts_from_documentary(smoke_config, actual_job_id, Path(job["output_dir"]), shorts_output, target_duration=min(45, args.seconds))
+            if shorts_output.exists():
+                record_stage("shorts", "PASS", {"output": str(shorts_output), "size_bytes": shorts_output.stat().st_size})
+                print(f"  PASS: Shorts generated ({shorts_output.stat().st_size} bytes)")
+            else:
+                fail_stage("shorts", RuntimeError("Shorts output not created"))
+        except Exception as e:
+            fail_stage("shorts", e)
     
     # STAGE 11: FFprobe final output
     print("\n--- Stage 11: FFprobe Validation ---")
@@ -799,13 +825,19 @@ def _cmd_smoke(args, config) -> int:
                 )
                 ffprobe_data = json.loads(result.stdout)
                 summary["ffprobe"] = ffprobe_data
-                record_stage("ffprobe", "PASS", {"format": ffprobe_data.get("format", {})})
-                print(f"  PASS: FFprobe validation complete")
-                
                 fmt = ffprobe_data.get("format", {})
                 duration = float(fmt.get("duration", 0))
+                streams = ffprobe_data.get("streams", [])
+                stream_types = {stream.get("codec_type") for stream in streams}
+                if duration <= 0:
+                    fail_stage("ffprobe", RuntimeError("Final MP4 duration is not positive"))
+                elif "video" not in stream_types or "audio" not in stream_types:
+                    fail_stage("ffprobe", RuntimeError("Final MP4 must contain video and audio streams"))
+                else:
+                    record_stage("ffprobe", "PASS", {"format": fmt, "streams": streams})
+                    print("  PASS: FFprobe validation complete")
                 print(f"    Duration: {duration:.3f}s")
-                for stream in ffprobe_data.get("streams", []):
+                for stream in streams:
                     if stream.get("codec_type") == "video":
                         print(f"    Video: {stream.get('width')}x{stream.get('height')} {stream.get('codec_name')}")
                     elif stream.get("codec_type") == "audio":
