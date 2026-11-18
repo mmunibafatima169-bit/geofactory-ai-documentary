@@ -13,6 +13,22 @@ from pathlib import Path
 class TestCLIRegression(unittest.TestCase):
     """Test that CLI structure is correct after restoration."""
 
+    def test_smoke_espeak_backend_is_synthesizable(self):
+        """The smoke espeak-ng value is accepted by the real synthesis dispatcher."""
+        from geofactory.core.config import FactoryConfig
+        from geofactory.media.tts_engine import TTSError, _synthesize_chunk
+
+        config = FactoryConfig(
+            root=Path(tempfile.gettempdir()),
+            database_path=str(Path(tempfile.gettempdir()) / "gf-test.sqlite3"),
+            output_dir=str(Path(tempfile.gettempdir()) / "gf-test-output"),
+            tts_backend="espeak-ng",
+            espeak_executable="definitely-not-installed",
+        )
+        with self.assertRaises(TTSError) as cm:
+            _synthesize_chunk("test", Path(tempfile.gettempdir()) / "smoke.wav", config)
+        self.assertNotIn("No audio TTS backend", str(cm.exception))
+
     def test_single_def_run(self):
         """cli.py must have exactly one 'def run' function."""
         with open("geofactory/cli.py") as f:

@@ -585,7 +585,7 @@ def _cmd_smoke(args, config) -> int:
             publishing_enabled=False,
             ffmpeg="ffmpeg",
             ffprobe="ffprobe",
-            tts_backend="espeak",
+            tts_backend="espeak-ng",
             espeak_executable="espeak-ng",
             espeak_voice="en-us",
             espeak_speed=155,
