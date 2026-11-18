@@ -339,7 +339,10 @@ def create_shorts_plan(
     
     for scene in best_window:
         orig_dur = scene["end_s"] - scene["start_s"]
-        shorts_dur = min(orig_dur, 8.0)  # Max 8s per scene in Shorts
+        # Preserve the full selected scene duration up to the Shorts per-scene cap.
+        # Window selection already caps each scene at 10 seconds, so splitting
+        # the same scene into a second 8-second cap creates short, silent gaps.
+        shorts_dur = min(orig_dur, 10.0)
         
         shorts_scenes.append({
             **scene,
