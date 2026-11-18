@@ -687,23 +687,33 @@ def _cmd_smoke(args, config) -> int:
     
     # STAGE 4: Map Build (requires PIL - will fail if not available)
     print("\n--- Stage 4: Map Build ---")
-    try:
-        map_spec = MapSceneSpec(country_iso_a3="SGP", duration_seconds=5.0, title=args.topic)
-        map_output = out_dir / "map_zoom.mp4"
-        create_map_scene(smoke_config.root, map_output, map_spec, ffmpeg_name=smoke_config.ffmpeg, width=smoke_config.width, height=smoke_config.height)
-        if map_output.exists():
-            record_stage("map_build", "PASS", {"output": str(map_output), "size_bytes": map_output.stat().st_size})
-            print(f"  PASS: Map created ({map_output.stat().st_size} bytes)")
-        else:
-            fail_stage("map_build", RuntimeError("Map output not created"))
-    except ImportError as e:
-        if "PIL" in str(e) or "Pillow" in str(e):
-            record_stage("map_build", "SKIP", details={"reason": "PIL not available"})
-            print(f"  SKIP: PIL not available")
-        else:
+    if args.offline:
+        record_stage("map_build", "SKIP", details={"reason": "offline mode"})
+        print("  SKIP: offline mode")
+        map_output = None
+        smoke_country = "USA"
+    else:
+        try:
+            # Use USA as default for smoke test since Singapore (SGP) is not in Natural Earth datasets
+            # In production, this would be derived from the topic/research
+            smoke_country = "USA"
+            map_spec = MapSceneSpec(country_iso_a3=smoke_country, duration_seconds=5.0, title=args.topic)
+            map_output = out_dir / "map_zoom.mp4"
+            create_map_scene(smoke_config.root, map_output, map_spec, ffmpeg_name=smoke_config.ffmpeg, width=smoke_config.width, height=smoke_config.height)
+            if map_output.exists():
+                record_stage("map_build", "PASS", {"output": str(map_output), "size_bytes": map_output.stat().st_size})
+                print(f"  PASS: Map created ({map_output.stat().st_size} bytes)")
+            else:
+                fail_stage("map_build", RuntimeError("Map output not created"))
+        except ImportError as e:
+            if "PIL" in str(e) or "Pillow" in str(e):
+                record_stage("map_build", "SKIP", details={"reason": "PIL not available"})
+                print(f"  SKIP: PIL not available")
+                map_output = None
+            else:
+                fail_stage("map_build", e)
+        except Exception as e:
             fail_stage("map_build", e)
-    except Exception as e:
-        fail_stage("map_build", e)
     
     # STAGE 5: Thumbnail Build (requires PIL)
     print("\n--- Stage 5: Thumbnail Build ---")
@@ -718,7 +728,7 @@ def _cmd_smoke(args, config) -> int:
         )
         record_stage("thumbnail_build", "PASS", {"concepts": len(concepts)})
         print(f"  PASS: Generated {len(concepts)} thumbnail concepts")
-    except ImportError as e:
+    except (ImportError, RuntimeError) as e:
         if "PIL" in str(e) or "Pillow" in str(e):
             record_stage("thumbnail_build", "SKIP", details={"reason": "PIL not available"})
             print(f"  SKIP: PIL not available")
@@ -798,44 +808,47 @@ def _cmd_smoke(args, config) -> int:
             package_dir = Path(job["output_dir"])
             package_dir.mkdir(parents=True, exist_ok=True)
 
-            from geofactory.media.asset_manager import register_asset
+            from geofactory.media.asset_manager import register_asset, register_video_asset
+            from geofactory.media.map_animation_engine import QUALIFICATION as MAP_QUALIFICATION
 
             downloaded_assets = sorted((out_dir / "assets").glob("*.jpg"))
             registered_assets = []
             for index, asset_path in enumerate(downloaded_assets, start=1):
-                try:
-                    asset_id = register_asset(
-                        db,
-                        actual_job_id,
-                        asset_path,
-                        "https://commons.wikimedia.org/",
-                        "Wikimedia Commons contributor",
-                        "CC-BY-4.0",
-                        "Wikimedia Commons contributor",
-                        True,
-                        title=f"Smoke Commons asset {index}",
-                        licence_url="https://creativecommons.org/licenses/by/4.0/",
-                    )
-                    registered_assets.append(asset_path.resolve())
-                except Exception:
-                    continue
+                asset_id = register_asset(
+                    db,
+                    actual_job_id,
+                    asset_path,
+                    "https://commons.wikimedia.org/",
+                    "Wikimedia Commons contributor",
+                    "CC-BY-4.0",
+                    "Wikimedia Commons contributor",
+                    True,
+                    title=f"Smoke Commons asset {index}",
+                    licence_url="https://creativecommons.org/licenses/by/4.0/",
+                )
+                registered_assets.append(asset_path.resolve())
 
             map_output = out_dir / "map_zoom.mp4"
             map_package_path = None
+            map_manifest = None
             if map_output.is_file():
                 maps_dir = package_dir / "maps"
                 maps_dir.mkdir(parents=True, exist_ok=True)
-                map_package_path = maps_dir / "SGP-01.mp4"
+                map_package_path = maps_dir / f"{smoke_country}-01.mp4"
                 shutil.copy2(map_output, map_package_path)
                 sidecar = map_output.with_suffix(".map.json")
                 if sidecar.is_file():
                     shutil.copy2(sidecar, map_package_path.with_suffix(".map.json"))
+                    map_manifest = json.loads(
+                        sidecar.read_text(encoding="utf-8")
+                    )
 
                 map_manifest_path = package_dir / "map_scenes.json"
                 if map_package_path.with_suffix(".map.json").is_file():
-                    map_manifest = json.loads(
-                        map_package_path.with_suffix(".map.json").read_text(encoding="utf-8")
-                    )
+                    if map_manifest is None:
+                        map_manifest = json.loads(
+                            map_package_path.with_suffix(".map.json").read_text(encoding="utf-8")
+                        )
                     map_entries = [{
                         "path": str(map_package_path.relative_to(package_dir)),
                         "dataset_name": map_manifest["dataset_name"],
@@ -850,6 +863,21 @@ def _cmd_smoke(args, config) -> int:
                 else:
                     map_package_path = None
 
+            # Register map scene in database so production renderer can validate it
+            if map_package_path is not None and map_manifest is not None:
+                register_video_asset(
+                    db,
+                    actual_job_id,
+                    map_package_path,
+                    "https://www.naturalearthdata.com/",
+                    "Natural Earth",
+                    map_manifest["licence"],  # "Public Domain" from Natural Earth
+                    MAP_QUALIFICATION,  # "Boundaries follow Natural Earth de facto depiction..."
+                    True,
+                    title=f"Smoke {map_manifest['scene'].get('country_iso_a3', 'map')} map",
+                    licence_url=map_manifest["licence_url"],
+                )
+
             allocations = {"job_id": actual_job_id, "allocations": {}}
             for scene in plan_result.scene_manifest.scenes:
                 candidates = []
@@ -859,15 +887,15 @@ def _cmd_smoke(args, config) -> int:
                     "satellite_imagery",
                 ) and map_package_path is not None:
                     candidates.append({
-                        "asset_id": "smoke-map-SGP-01",
-                        "title": "Smoke Singapore map",
-                        "description": "Natural Earth Singapore map scene",
+                        "asset_id": f"smoke-map-{map_manifest['scene'].get('country_iso_a3', 'SGP')}",
+                        "title": f"Smoke {map_manifest['scene'].get('country_iso_a3', 'map')} map",
+                        "description": f"Natural Earth {map_manifest['scene'].get('country_iso_a3', 'map')} map scene",
                         "media_type": "video",
                         "source_page": "https://www.naturalearthdata.com/",
                         "download_url": "https://www.naturalearthdata.com/",
                         "creator": "Natural Earth",
-                        "licence": "Public Domain",
-                        "licence_url": "https://www.naturalearthdata.com/about/terms-of-use/",
+                        "licence": map_manifest["licence"],
+                        "licence_url": map_manifest["licence_url"],
                         "accessed_at": "",
                         "local_path": str(map_package_path.resolve()),
                     })
@@ -895,11 +923,9 @@ def _cmd_smoke(args, config) -> int:
                 json.dumps(allocations, indent=2) + "\n",
                 encoding="utf-8",
             )
+            # Validate allocations using production validator (not just file existence)
             if allocations["allocations"]:
-                try:
-                    validate_smoke_allocations(package_dir)
-                except ValueError:
-                    pass
+                validate_smoke_allocations(package_dir)
             plan_result.asset_allocations = {
                 scene_id: candidates
                 for scene_id, candidates in allocations["allocations"].items()
@@ -918,7 +944,7 @@ def _cmd_smoke(args, config) -> int:
             print(f"  PASS: Documentary plan created")
     except Exception as e:
         fail_stage("plan_documentary", e)
-    
+
     # STAGE 8: Render Documentary (FFmpeg)
     print("\n--- Stage 8: Render Documentary (FFmpeg) ---")
     output_mp4 = out_dir / "final.mp4"

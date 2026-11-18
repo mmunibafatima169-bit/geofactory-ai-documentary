@@ -267,6 +267,82 @@ def register_music_asset(
     return asset_id
 
 
+def register_video_asset(
+    db: Database,
+    job_id: str,
+    file_path: Path,
+    origin_url: str,
+    creator: str,
+    licence: str,
+    attribution: str,
+    commercial_use: bool,
+    *,
+    title: str = "",
+    publisher: str = "Owner-provided video",
+    licence_url: str = "",
+) -> str:
+    """Register one owner-provided video file after its reuse terms are checked."""
+    if file_path.is_symlink():
+        raise AssetRightsError("Video asset must not be a symbolic link.")
+    path = file_path.resolve(strict=True)
+    if not path.is_file() or path.suffix.lower() not in {".mp4", ".mov", ".mkv", ".webm"}:
+        raise AssetRightsError("Video must be a non-empty supported video file (MP4, MOV, MKV, WebM).")
+    if path.stat().st_size == 0:
+        raise AssetRightsError("Video file is empty.")
+    if licence not in ALLOWED_MEDIA_LICENSES:
+        raise AssetRightsError(
+            f"Video licence {licence!r} is not approved; unknown rights are rejected."
+        )
+    if not commercial_use:
+        raise AssetRightsError("Video is not cleared for commercial use.")
+    parsed = urlparse(origin_url)
+    if parsed.scheme != "https" or not parsed.netloc or parsed.username or parsed.password:
+        raise AssetRightsError("Video origin must be a valid HTTPS URL.")
+    if licence_url:
+        parsed_licence = urlparse(licence_url)
+        if (
+            parsed_licence.scheme != "https" or not parsed_licence.netloc
+            or parsed_licence.username or parsed_licence.password
+        ):
+            raise AssetRightsError("Video licence URL must be a valid HTTPS URL.")
+    if not creator.strip() or not attribution.strip():
+        raise AssetRightsError("Video creator and attribution text are required.")
+    ffprobe = shutil.which("ffprobe")
+    if not ffprobe:
+        raise AssetRightsError("FFprobe is required to validate a video file.")
+    probe = subprocess.run(
+        [
+            ffprobe, "-v", "error", "-select_streams", "v:0", "-show_entries",
+            "stream=codec_type", "-of", "json", str(path),
+        ],
+        capture_output=True, text=True, timeout=30, check=False,
+    )
+    if probe.returncode:
+        raise AssetRightsError("FFprobe could not validate the supplied video file.")
+    try:
+        streams = json.loads(probe.stdout).get("streams", [])
+    except (json.JSONDecodeError, AttributeError) as exc:
+        raise AssetRightsError("FFprobe returned invalid video metadata.") from exc
+    if not streams or streams[0].get("codec_type") != "video":
+        raise AssetRightsError("Supplied video file has no readable video stream.")
+    asset_id = f"ast-{uuid.uuid4().hex[:12]}"
+    with db.connect() as conn:
+        conn.execute(
+            """INSERT INTO assets
+               (id, job_id, title, publisher, path, origin_url, creator, licence,
+                licence_url, attribution, commercial_use, file_sha256, retrieved_at,
+                media_type)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, 'video')""",
+            (
+                asset_id, job_id, title.strip() or path.stem,
+                publisher.strip() or "Owner-provided video", str(path),
+                origin_url, creator, licence,
+                licence_url or PLATFORM_LICENSES.get(licence, ""),
+                attribution, sha256_file(path), datetime.now(timezone.utc).isoformat(),
+            ),
+        )
+    return asset_id
+
 def _provider_json(
     url: str, *, provider: str, allowed_host: str, headers: dict[str, str] | None = None
 ) -> dict[str, object]:
