@@ -28,9 +28,10 @@ jobs:
           python-version: "3.12"
       
       - name: Install system dependencies
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
       
       - name: Install Python dependencies
         run: |

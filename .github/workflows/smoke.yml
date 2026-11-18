@@ -40,9 +40,10 @@ jobs:
           python-version: "3.12"
       
       - name: Install system dependencies
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ffmpeg espeak-ng fonts-dejavu-core
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
+          sudo apt-get install -y --no-install-recommends ffmpeg espeak-ng fonts-dejavu-core -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
       
       - name: Install Python dependencies
         run: |
@@ -118,12 +119,13 @@ jobs:
           node-version: "22"
       
       - name: Install system dependencies for Remotion (Chromium + Linux deps)
+        timeout-minutes: 8
         run: |
-          sudo apt-get update
+          sudo apt-get update -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
           sudo apt-get install -y \
             libnss3 libdbus-1-3 libatk1.0-0 libasound2t64 libxrandr2 \
             libxkbcommon-x11-0 libxfixes3 libxcomposite1 libxdamage1 \
-            libgbm-dev libcups2 libatk-bridge2.0-0 libpango-1.0-0 libcairo2
+            libgbm-dev libcups2 libatk-bridge2.0-0 libpango-1.0-0 libcairo2 -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30
       
       - name: Install Remotion dependencies
         working-directory: ./studio/remotion
